@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+import shutil
 from typing import Any, Dict, Optional
 from datetime import datetime
 
@@ -425,13 +426,19 @@ def _with_timeout(fn, timeout_s: float, *args, **kwargs):
 
 
 def _do_snapshot(px: Any, out_path: Optional[str] = None, vflip: bool = False, hflip: bool = False) -> Dict[str, Any]:
-    # Use vilib for camera handling (v2 stack includes vilib). Enforce short timeouts.
-    cam_timeout = float(os.environ.get('PICARX_CAMERA_TIMEOUT', '1.0'))
+    """Capture an image.
+
+    Backend selection:
+    - Default is PICARX_SNAPSHOT_BACKEND=auto.
+    - On Raspberry Pi OS (esp. Pi 5), prefer rpicam/libcamera tools when available because
+      vilib can hang depending on camera stack.
+    """
+
+    backend = os.environ.get('PICARX_SNAPSHOT_BACKEND', 'auto').strip().lower()
+
+    # rpicam-still / libcamera-still timeouts need to be a bit more forgiving than vilib.
+    cam_timeout = float(os.environ.get('PICARX_CAMERA_TIMEOUT', '3.0'))
     warmup_s = float(os.environ.get('PICARX_CAMERA_WARMUP', '0.15'))
-    try:
-        from vilib import Vilib
-    except Exception as e:
-        return {'ok': False, 'action': 'snapshot', 'error': f'vilib import failed: {e}'}
 
     # Determine output path
     if out_path:
@@ -451,6 +458,51 @@ def _do_snapshot(px: Any, out_path: Optional[str] = None, vflip: bool = False, h
         os.makedirs(home_dir, exist_ok=True)
         out_dir = home_dir
         out_path = os.path.join(out_dir, out_name + '.jpg')
+
+    # ---- Preferred backend: rpicam/libcamera ----
+    def _try_rpicam() -> Optional[Dict[str, Any]]:
+        exe = shutil.which('rpicam-still') or shutil.which('libcamera-still')
+        if not exe:
+            return None
+
+        # Keep this fast by default; override via PICARX_RPICAM_TIMEOUT_MS.
+        t_ms = int(os.environ.get('PICARX_RPICAM_TIMEOUT_MS', '800'))
+        t_ms = max(200, min(t_ms, 10000))
+
+        cmd = [exe, '-n', '-t', str(t_ms), '-o', out_path]
+        if vflip:
+            cmd.append('--vflip')
+        if hflip:
+            cmd.append('--hflip')
+
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=cam_timeout)
+            if proc.returncode != 0:
+                return {
+                    'ok': False,
+                    'action': 'snapshot',
+                    'backend': 'rpicam',
+                    'error': f'{os.path.basename(exe)} failed (code {proc.returncode}): {proc.stdout.strip()}',
+                    'path': out_path,
+                }
+            return {'ok': True, 'action': 'snapshot', 'backend': 'rpicam', 'path': out_path}
+        except subprocess.TimeoutExpired:
+            return {'ok': False, 'action': 'snapshot', 'backend': 'rpicam', 'error': f'rpicam timeout after {cam_timeout:.2f}s', 'path': out_path}
+        except Exception as e:
+            return {'ok': False, 'action': 'snapshot', 'backend': 'rpicam', 'error': str(e), 'path': out_path}
+
+    if backend in ('auto', 'rpicam', 'libcamera'):
+        r = _try_rpicam()
+        if r is not None:
+            if r.get('ok') or backend in ('rpicam', 'libcamera'):
+                return r
+            # auto-mode fallback continues below
+
+    # ---- Fallback backend: vilib ----
+    try:
+        from vilib import Vilib
+    except Exception as e:
+        return {'ok': False, 'action': 'snapshot', 'backend': 'vilib', 'error': f'vilib import failed: {e}', 'path': out_path}
 
     try:
         # Ensure previous session is closed quickly
@@ -478,15 +530,15 @@ def _do_snapshot(px: Any, out_path: Optional[str] = None, vflip: bool = False, h
             _with_timeout(lambda: Vilib.camera_close(), 0.3)
         except Exception:
             pass
-        return {'ok': True, 'action': 'snapshot', 'path': os.path.join(out_dir, out_name + '.jpg')}
+        return {'ok': True, 'action': 'snapshot', 'backend': 'vilib', 'path': os.path.join(out_dir, out_name + '.jpg')}
     except TimeoutError as e:
         try:
             Vilib.camera_close()
         except Exception:
             pass
-        return {'ok': False, 'action': 'snapshot', 'error': str(e), 'path': os.path.join(out_dir, out_name + '.jpg')}
+        return {'ok': False, 'action': 'snapshot', 'backend': 'vilib', 'error': str(e), 'path': os.path.join(out_dir, out_name + '.jpg')}
     except Exception as e:
-        return {'ok': False, 'action': 'snapshot', 'error': str(e), 'path': os.path.join(out_dir, out_name + '.jpg')}
+        return {'ok': False, 'action': 'snapshot', 'backend': 'vilib', 'error': str(e), 'path': os.path.join(out_dir, out_name + '.jpg')}
 
 
 def _do_ultrasonic(px: Any) -> Dict[str, Any]:

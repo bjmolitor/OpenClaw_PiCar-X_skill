@@ -30,7 +30,10 @@ Command reference
 - `stop`
   - Immediately stops motors.
 - `snapshot [--path <file>] [--vflip] [--hflip]`
-  - Captures one image via `vilib`. Default path: `gpt_examples/aiagent_camera/snap-<timestamp>.jpg` (auto-created).
+  - Captures one image.
+  - **Backend:** prefers `rpicam-still` / `libcamera-still` when available (recommended on Raspberry Pi 5); otherwise falls back to `vilib`.
+  - Control via env `PICARX_SNAPSHOT_BACKEND=auto|rpicam|vilib`.
+  - Default path: `aiagent_camera/snap-<timestamp>.jpg` (auto-created).
 
 Environment variables
 - `PICARX_MAX_SPEED` (default 60): speed clamp for `drive`.
