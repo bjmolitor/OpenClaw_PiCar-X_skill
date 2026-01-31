@@ -518,7 +518,7 @@ def _do_snapshot(px: Any, out_path: Optional[str] = None, vflip: bool = False, h
                                 'path': out_path,
                                 'cmd': cmd,
                             }
-                            if last_out:
+                            if last_out and verbose > 0:
                                 ok_res['log'] = last_out
                             return ok_res
                     except Exception:
