@@ -510,7 +510,17 @@ def _do_snapshot(px: Any, out_path: Optional[str] = None, vflip: bool = False, h
                     # Basic sanity: file exists and is non-empty
                     try:
                         if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-                            return {'ok': True, 'action': 'snapshot', 'backend': 'rpicam', 'path': out_path}
+                            ok_res = {
+                                'ok': True,
+                                'action': 'snapshot',
+                                'backend': 'rpicam',
+                                'backend_exe': os.path.basename(exe),
+                                'path': out_path,
+                                'cmd': cmd,
+                            }
+                            if last_out:
+                                ok_res['log'] = last_out
+                            return ok_res
                     except Exception:
                         pass
                     return {
