@@ -474,7 +474,15 @@ def _do_snapshot(px: Any, out_path: Optional[str] = None, vflip: bool = False, h
         verbose = 0 if verbose < 0 else (2 if verbose > 2 else verbose)
 
         cam_index = os.environ.get('PICARX_CAMERA_INDEX', '').strip()
-        zsl = os.environ.get('PICARX_RPICAM_ZSL', '0').strip().lower() in ('1', 'true', 'yes', 'on')
+
+        # rpicam-still prints a warning (even at -v 0) when temporal denoise cannot be used.
+        # Enabling ZSL avoids that warning and tends to improve snapshot reliability.
+        # Default: enabled unless explicitly set to a falsey value.
+        zsl_env = os.environ.get('PICARX_RPICAM_ZSL')
+        if zsl_env is None:
+            zsl = True
+        else:
+            zsl = str(zsl_env).strip().lower() in ('1', 'true', 'yes', 'on')
 
         cmd = [exe, '-n', '-v', str(verbose), '-t', str(t_ms), '-o', out_path]
         if cam_index:
