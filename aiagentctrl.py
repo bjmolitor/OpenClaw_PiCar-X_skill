@@ -469,23 +469,60 @@ def _do_snapshot(px: Any, out_path: Optional[str] = None, vflip: bool = False, h
         t_ms = int(os.environ.get('PICARX_RPICAM_TIMEOUT_MS', '800'))
         t_ms = max(200, min(t_ms, 10000))
 
-        cmd = [exe, '-n', '-t', str(t_ms), '-o', out_path]
+        # Keep output quiet by default; override with PICARX_RPICAM_VERBOSE (0/1/2).
+        verbose = int(os.environ.get('PICARX_RPICAM_VERBOSE', '0'))
+        verbose = 0 if verbose < 0 else (2 if verbose > 2 else verbose)
+
+        cam_index = os.environ.get('PICARX_CAMERA_INDEX', '').strip()
+        zsl = os.environ.get('PICARX_RPICAM_ZSL', '0').strip().lower() in ('1', 'true', 'yes', 'on')
+
+        cmd = [exe, '-n', '-v', str(verbose), '-t', str(t_ms), '-o', out_path]
+        if cam_index:
+            cmd += ['--camera', cam_index]
+        if zsl:
+            cmd += ['--zsl', '1']
         if vflip:
             cmd.append('--vflip')
         if hflip:
             cmd.append('--hflip')
 
+        # Optionally retry once on failure/timeouts; helps with transient libcamera errors.
+        retries = int(os.environ.get('PICARX_RPICAM_RETRIES', '1'))
+        retries = max(0, min(retries, 3))
+
+        def _run_once():
+            return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=cam_timeout)
+
         try:
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=cam_timeout)
-            if proc.returncode != 0:
-                return {
-                    'ok': False,
-                    'action': 'snapshot',
-                    'backend': 'rpicam',
-                    'error': f'{os.path.basename(exe)} failed (code {proc.returncode}): {proc.stdout.strip()}',
-                    'path': out_path,
-                }
-            return {'ok': True, 'action': 'snapshot', 'backend': 'rpicam', 'path': out_path}
+            last_out = ''
+            for attempt in range(retries + 1):
+                proc = _run_once()
+                last_out = (proc.stdout or '').strip()
+                if proc.returncode == 0:
+                    # Basic sanity: file exists and is non-empty
+                    try:
+                        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+                            return {'ok': True, 'action': 'snapshot', 'backend': 'rpicam', 'path': out_path}
+                    except Exception:
+                        pass
+                    return {
+                        'ok': False,
+                        'action': 'snapshot',
+                        'backend': 'rpicam',
+                        'error': 'rpicam reported success but output file missing/empty',
+                        'path': out_path,
+                    }
+                # brief backoff before retry
+                if attempt < retries:
+                    time.sleep(0.15)
+
+            return {
+                'ok': False,
+                'action': 'snapshot',
+                'backend': 'rpicam',
+                'error': f'{os.path.basename(exe)} failed (code {proc.returncode}): {last_out}',
+                'path': out_path,
+            }
         except subprocess.TimeoutExpired:
             return {'ok': False, 'action': 'snapshot', 'backend': 'rpicam', 'error': f'rpicam timeout after {cam_timeout:.2f}s', 'path': out_path}
         except Exception as e:
