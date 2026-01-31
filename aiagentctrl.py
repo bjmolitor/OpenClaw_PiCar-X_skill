@@ -664,27 +664,27 @@ def parse_args(argv=None):
     sub = parser.add_subparsers(dest='command', required=True)
 
     p_drive = sub.add_parser('drive', help='Drive forward/backward at speed for seconds')
-    p_drive.add_argument('--json', action='store_true', help=argparse.SUPPRESS)
+    p_drive.add_argument('--json', dest='json_sub', action='store_true', default=None, help=argparse.SUPPRESS)
     p_drive.add_argument('--speed', type=int, required=True, help='Speed 0..PICARX_MAX_SPEED')
     p_drive.add_argument('--seconds', type=float, default=0.0, help='Duration seconds (0=return immediately)')
     p_drive.add_argument('--direction', choices=['forward', 'backward'], required=True)
 
     p_steer = sub.add_parser('steer', help='Set steering angle')
-    p_steer.add_argument('--json', action='store_true', help=argparse.SUPPRESS)
+    p_steer.add_argument('--json', dest='json_sub', action='store_true', default=None, help=argparse.SUPPRESS)
     p_steer.add_argument('--angle', type=int, required=True, help='Angle -PICARX_MAX_ANGLE..PICARX_MAX_ANGLE')
 
     p_head = sub.add_parser('head', help='Set head pan/tilt angles')
-    p_head.add_argument('--json', action='store_true', help=argparse.SUPPRESS)
+    p_head.add_argument('--json', dest='json_sub', action='store_true', default=None, help=argparse.SUPPRESS)
     p_head.add_argument('--pan', type=int, help='Pan angle -PICARX_MAX_ANGLE..PICARX_MAX_ANGLE')
     p_head.add_argument('--tilt', type=int, help='Tilt angle -PICARX_MAX_ANGLE..PICARX_MAX_ANGLE')
 
     p_ultra = sub.add_parser('ultrasonic', help='Read ultrasonic distance (cm)')
-    p_ultra.add_argument('--json', action='store_true', help=argparse.SUPPRESS)
+    p_ultra.add_argument('--json', dest='json_sub', action='store_true', default=None, help=argparse.SUPPRESS)
     p_stop = sub.add_parser('stop', help='Stop motors immediately')
-    p_stop.add_argument('--json', action='store_true', help=argparse.SUPPRESS)
+    p_stop.add_argument('--json', dest='json_sub', action='store_true', default=None, help=argparse.SUPPRESS)
 
     p_snap = sub.add_parser('snapshot', help='Capture an image from the camera')
-    p_snap.add_argument('--json', action='store_true', help=argparse.SUPPRESS)
+    p_snap.add_argument('--json', dest='json_sub', action='store_true', default=None, help=argparse.SUPPRESS)
     p_snap.add_argument('--path', type=str, help='Output image path (default: gpt_examples/aiagent_camera/snap-<ts>.jpg)')
     p_snap.add_argument('--vflip', action='store_true', help='Vertical flip')
     p_snap.add_argument('--hflip', action='store_true', help='Horizontal flip')
@@ -694,6 +694,10 @@ def parse_args(argv=None):
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+
+    # Support --json both before and after the subcommand. argparse subparsers
+    # can overwrite the top-level flag, so we OR them here.
+    json_out = bool(getattr(args, 'json', False) or getattr(args, 'json_sub', False))
 
     # Safety clamps (defaults)
     max_speed = _env_int('PICARX_MAX_SPEED', 60)
@@ -710,14 +714,14 @@ def main(argv=None) -> int:
         _PX_OBJ = _make_px()
     except TimeoutError as e:
         result = {'ok': False, 'action': args.command, 'error': f'init timeout: {e}'}
-        if args.json:
+        if json_out:
             print(json.dumps(result, separators=(',', ':'), ensure_ascii=False))
         else:
             print(result)
         return 1
     except Exception as e:
         result = {'ok': False, 'action': args.command, 'error': f'init failed: {e}'}
-        if args.json:
+        if json_out:
             print(json.dumps(result, separators=(',', ':'), ensure_ascii=False))
         else:
             print(result)
@@ -775,7 +779,7 @@ def main(argv=None) -> int:
         # Dead-man stop after each command
         _safe_stop(_PX_OBJ)
 
-    if args.json:
+    if json_out:
         print(json.dumps(result, separators=(',', ':'), ensure_ascii=False))
     else:
         # Human-readable single-line dict
