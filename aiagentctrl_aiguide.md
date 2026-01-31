@@ -38,11 +38,21 @@ Command reference
 Environment variables
 - `PICARX_MAX_SPEED` (default 60): speed clamp for `drive`.
 - `PICARX_MAX_ANGLE` (default 35): clamp for steering and pan/tilt.
-- `PICARX_FAKE=1`: mock hardware (no motion) with plausible `ultrasonic`.
 - `PICARX_I2C_BUS` (default 1 on v2): override I2C bus.
 - `PICARX_PREFER_LOCAL` (default `1`): set `0` to prefer site‑installed module.
 - `PICARX_MODULE_DIR`: prepend a specific path to import (`v2.0` checkout, etc.).
 - `PICARX_STATE_FILE`: file to persist head state (default `/opt/picar-x/aiagentctrl_state.json`).
+
+Snapshot (rpicam/libcamera) tuning
+- `PICARX_SNAPSHOT_BACKEND=auto|rpicam|vilib`
+- `PICARX_CAMERA_TIMEOUT` (seconds, default `3.0`): overall timeout for snapshot actions.
+- `PICARX_CAMERA_WARMUP` (seconds, default `0.15`): warmup for `vilib` backend.
+- `PICARX_RPICAM_TIMEOUT_MS` (default `800`): rpicam capture time.
+- `PICARX_RPICAM_VERBOSE=0|1|2` (default `0`): rpicam verbosity.
+- `PICARX_CAMERA_INDEX` (optional): select camera index for rpicam.
+- `PICARX_RPICAM_ZSL=0|1` (default: **enabled**): reduces libcamera warnings and improves timing.
+- `PICARX_RPICAM_RETRIES=0..3` (default `1`): retries on transient failures.
+- `PICARX_CAMERA_VFLIP=0|1`, `PICARX_CAMERA_HFLIP=0|1` (defaults `0`): default flips.
 
 Examples (v2)
 - Plain shell
@@ -50,10 +60,13 @@ Examples (v2)
   - `PICARX_PREFER_LOCAL=1 PICARX_I2C_BUS=1 python3 aiagentctrl.py drive --speed 30 --seconds 0.5 --direction forward --json`
   - `python3 aiagentctrl.py head --pan -12 --tilt 7 --json`  # smooth move and persist
   - `python3 aiagentctrl.py snapshot --path /home/admin/Pictures/test.jpg --json`
-  - `PICARX_FAKE=1 python3 aiagentctrl.py steer --angle 999 --json`  # clamp demo
+  - `PICARX_RPICAM_RETRIES=2 PICARX_RPICAM_TIMEOUT_MS=1200 python3 aiagentctrl.py snapshot --json`
 
 Troubleshooting
 - Import path: install editable or prefix with `PYTHONPATH=.` from repo root.
 - Ultrasonic: if returning negative/erratic, check sensor cabling and `robot_hat` I2C on bus 1.
-- Camera: if snapshot hangs, verify camera is enabled and working (`example/7.display.py`), then re‑try.
+- Camera:
+  - If snapshot hangs/fails, try forcing backend: `PICARX_SNAPSHOT_BACKEND=rpicam`.
+  - If image is upside-down, set `PICARX_CAMERA_VFLIP=1` and/or `PICARX_CAMERA_HFLIP=1`.
+  - If transient failures occur, raise `PICARX_RPICAM_RETRIES` and/or `PICARX_RPICAM_TIMEOUT_MS`.
 - Motors keep running? Use `python3 aiagentctrl.py stop` or Ctrl‑C; the controller also stops on any error.
