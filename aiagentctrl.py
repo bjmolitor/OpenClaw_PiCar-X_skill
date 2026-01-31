@@ -756,7 +756,10 @@ def main(argv=None) -> int:
             result = _do_stop(_PX_OBJ)
 
         elif args.command == 'snapshot':
-            result = _do_snapshot(_PX_OBJ, getattr(args, 'path', None), getattr(args, 'vflip', False), getattr(args, 'hflip', False))
+            # CLI flags override env defaults.
+            vflip = bool(getattr(args, 'vflip', False)) or (str(os.environ.get('PICARX_CAMERA_VFLIP', '0')).strip().lower() in ('1', 'true', 'yes', 'on'))
+            hflip = bool(getattr(args, 'hflip', False)) or (str(os.environ.get('PICARX_CAMERA_HFLIP', '0')).strip().lower() in ('1', 'true', 'yes', 'on'))
+            result = _do_snapshot(_PX_OBJ, getattr(args, 'path', None), vflip, hflip)
 
         else:
             raise ValueError(f"Unknown command: {args.command}")
