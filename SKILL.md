@@ -164,6 +164,8 @@ Commands:
 - `healthcheck.py voltage-log --interval 2 --duration 120` → JSONL samples
 - `healthcheck.py perceive` → ultrasonic + snapshot (no driving)
 
+Note: `perceive` does not move the head. A future `--sweep-head` mode can be added (GO-gated).
+
 ## 4.1 Battery warnings (programmatic, no model)
 
 This repo includes `battery_watch.py`, a pure programmatic watcher:
