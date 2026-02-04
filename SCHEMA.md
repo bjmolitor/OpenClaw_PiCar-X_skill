@@ -115,3 +115,18 @@ On error:
 
 ## voltage-log (JSONL)
 Each line is a `health` object plus `cmd:"voltage_log"`.
+
+## perceive (new in v0.1)
+Environment perception without driving.
+
+```json
+{
+  "ok": true,
+  "cmd": "perceive",
+  "ts": "2026-02-04T18:25:00+01:00",
+  "sensors": {
+    "ultrasonic": {"ok": true, "distance_cm": 37.2}
+  },
+  "camera": {"ok": true, "path": ".../snap.jpg", "backend": "rpicam"}
+}
+```

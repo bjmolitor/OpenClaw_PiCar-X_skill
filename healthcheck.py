@@ -7,6 +7,9 @@ MVP v0.1 goals:
 - Optional voltage logging to detect supply sag / undervoltage during load.
 
 This script is SAFE by default (no motion).
+
+New in v0.1:
+- `perceive` command: environment perception snapshot (camera + ultrasonic) without driving.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 
 def _now_iso() -> str:
@@ -169,6 +172,61 @@ def health_json() -> Dict[str, Any]:
     return res
 
 
+def _repo_root() -> str:
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _run_json(cmd: list[str], timeout: float = 10.0, env: Optional[dict] = None) -> Tuple[bool, Dict[str, Any], str]:
+    """Run a command expected to output JSON on the last line."""
+    try:
+        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout, env=env)
+        out = (p.stdout or "").strip()
+        last = out.splitlines()[-1] if out else ""
+        obj = json.loads(last) if last.startswith("{") else {}
+        ok = bool(obj.get("ok")) if isinstance(obj, dict) and "ok" in obj else (p.returncode == 0)
+        return ok, (obj if isinstance(obj, dict) else {}), out[-4000:]
+    except Exception as e:
+        return False, {"ok": False, "error": f"{type(e).__name__}: {e}"}, ""
+
+
+def perceive_json(force_snapshot_backend: str = "rpicam") -> Dict[str, Any]:
+    """Environment perception without driving.
+
+    Includes:
+    - ultrasonic distance
+    - camera snapshot (best effort)
+
+    Left/right sweep is not done by default (head can be mechanically damaged).
+    """
+    base = health_json()
+    base["cmd"] = "perceive"
+
+    env = os.environ.copy()
+    if force_snapshot_backend:
+        env["PICARX_SNAPSHOT_BACKEND"] = force_snapshot_backend
+
+    ai = os.path.join(_repo_root(), "aiagentctrl.py")
+
+    # Ultrasonic
+    ok_u, obj_u, raw_u = _run_json([sys.executable, ai, "ultrasonic", "--json"], timeout=6.0, env=env)
+    base["sensors"] = {
+        "ultrasonic": obj_u if obj_u else {"ok": ok_u, "raw": raw_u[-400:]},
+    }
+
+    # Snapshot
+    ok_s, obj_s, raw_s = _run_json([sys.executable, ai, "snapshot", "--json"], timeout=15.0, env=env)
+    # If rpicam isn't available and vilib fails, we still return diagnostics.
+    base["camera"] = obj_s if obj_s else {"ok": ok_s, "raw": raw_s[-800:]}
+
+    # Head status (manual for now)
+    base["actuators"] = {
+        "head_pan_tilt": "degraded" if os.environ.get("PICARX_HEAD_DEGRADED") else "unknown",
+        "drive": "blocked_without_go",
+    }
+
+    return base
+
+
 def voltage_log(path: str, interval_s: float, duration_s: float) -> int:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     end = time.time() + duration_s if duration_s > 0 else None
@@ -198,6 +256,9 @@ def main(argv=None) -> int:
     ap_vlog.add_argument("--interval", type=float, default=float(os.environ.get("PICARX_VOLTAGE_INTERVAL", "2.0")))
     ap_vlog.add_argument("--duration", type=float, default=float(os.environ.get("PICARX_VOLTAGE_DURATION", "120.0")))
 
+    ap_perc = sub.add_parser("perceive", help="Environment perception (camera + ultrasonic), no driving")
+    ap_perc.add_argument("--snapshot-backend", default=os.environ.get("PICARX_SNAPSHOT_BACKEND", "rpicam"))
+
     args = ap.parse_args(argv)
 
     if args.cmd == "health":
@@ -209,8 +270,13 @@ def main(argv=None) -> int:
         path = args.path
         # allow repo-relative path
         if not os.path.isabs(path):
-            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
+            path = os.path.join(_repo_root(), path)
         return voltage_log(path=path, interval_s=args.interval, duration_s=args.duration)
+
+    if args.cmd == "perceive":
+        obj = perceive_json(force_snapshot_backend=args.snapshot_backend)
+        print(json.dumps(obj, ensure_ascii=False))
+        return 0
 
     return 2
 

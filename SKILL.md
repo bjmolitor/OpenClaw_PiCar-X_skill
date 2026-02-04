@@ -162,6 +162,7 @@ Provide a lightweight health interface (implemented in this repo) returning:
 Commands:
 - `healthcheck.py health` → one JSON object
 - `healthcheck.py voltage-log --interval 2 --duration 120` → JSONL samples
+- `healthcheck.py perceive` → ultrasonic + snapshot (no driving)
 
 ## 4.1 Battery warnings (programmatic, no model)
 
