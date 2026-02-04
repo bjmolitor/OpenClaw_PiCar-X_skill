@@ -91,3 +91,27 @@ On error:
   "cmd": "stop"
 }
 ```
+
+## health (new in v0.1)
+
+```json
+{
+  "ok": true,
+  "ts": "2026-02-04T15:40:00+01:00",
+  "host": {
+    "temp_c": 61.5,
+    "throttled": "0xe0000",
+    "undervoltage_now": false,
+    "undervoltage_seen": true
+  },
+  "power": {
+    "battery_v": 8.34,
+    "battery_low": false,
+    "battery_critical": false
+  },
+  "notes": []
+}
+```
+
+## voltage-log (JSONL)
+Each line is a `health` object plus `cmd:"voltage_log"`.

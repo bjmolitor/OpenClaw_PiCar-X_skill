@@ -152,13 +152,16 @@ Not implemented inside this repo, but required for the robot body experience:
 
 ---
 
-## 4) Diagnostics (v0.1)
+## 4) Diagnostics / self-awareness (v0.1)
 
-Add a lightweight `status`/`diag` command (can be a separate script) returning:
-- `audio_out: ok|unknown`
-- `mic_in: ok|unknown`
-- `camera: ok|degraded`
-- `battery: percent|unknown` (battery optional; best effort)
+Provide a lightweight health interface (can be a separate script) returning:
+- host temp + `vcgencmd get_throttled` flags (undervoltage/throttling)
+- Robot-HAT battery voltage (best effort)
+- optional voltage logger to correlate sag during load
+
+Recommended commands:
+- `healthcheck.py health` → one JSON object
+- `healthcheck.py voltage-log --interval 2 --duration 120` → JSONL samples
 
 ---
 
