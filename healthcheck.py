@@ -218,9 +218,9 @@ def perceive_json(force_snapshot_backend: str = "rpicam") -> Dict[str, Any]:
     # If rpicam isn't available and vilib fails, we still return diagnostics.
     base["camera"] = obj_s if obj_s else {"ok": ok_s, "raw": raw_s[-800:]}
 
-    # Head status (manual for now)
+    # Actuators (v0.1): motion is gated outside this safe routine.
     base["actuators"] = {
-        "head_pan_tilt": "degraded" if os.environ.get("PICARX_HEAD_DEGRADED") else "unknown",
+        "head_pan_tilt": "unknown",
         "drive": "blocked_without_go",
     }
 
