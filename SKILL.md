@@ -165,6 +165,7 @@ Commands:
 - `healthcheck.py perceive` → ultrasonic + snapshot (no driving)
 - `healthcheck.py perceive --sweep-head` → 5 images: left/center/right + up/down (head-only, no driving)
 - `healthcheck.py perceive --sweep-head --describe` → same + LMM interpretation ("where am I / hazards")
+- `healthcheck.py perceive --sweep-head --publish-whatsapp` → send 5 images into WhatsApp history (shared session context)
 
 ## 4.1 Battery warnings (programmatic, no model)
 

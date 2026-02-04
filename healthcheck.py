@@ -273,7 +273,45 @@ def _describe_with_openai(shots: List[Dict[str, Any]]) -> Dict[str, Any]:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
-def perceive_json(force_snapshot_backend: str = "rpicam", sweep_head: bool = False, describe: bool = False) -> Dict[str, Any]:
+def _wa_target() -> str:
+    return (os.environ.get("PICARX_PERCEIVE_WA_TARGET") or os.environ.get("NAVIS_BATTERY_WA_TARGET") or "+491727296893").strip()
+
+
+def _openclaw_bin() -> str:
+    return (os.environ.get("NAVIS_OPENCLAW_BIN") or "/home/admin/.nvm/versions/node/v22.17.0/bin/openclaw").strip()
+
+
+def _publish_whatsapp_images(shots: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Send images to WhatsApp via OpenClaw CLI (programmatic).
+
+    Rationale: once voice+whatsapp share one session, WhatsApp media becomes part of the shared context.
+    """
+    oc = _openclaw_bin()
+    target = _wa_target()
+
+    sent = []
+    for s in shots:
+        label = s.get("label") or "shot"
+        path = (((s.get("snapshot") or {}).get("path")) or "").strip()
+        if not path or not os.path.exists(path):
+            continue
+        msg = f"perceive/{label}"
+        try:
+            p = subprocess.run(
+                [oc, "message", "send", "--channel", "whatsapp", "--target", target, "--message", msg, "--file", path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=30,
+            )
+            sent.append({"label": label, "path": path, "rc": p.returncode, "out": (p.stdout or "")[-300:]})
+        except Exception as e:
+            sent.append({"label": label, "path": path, "rc": -1, "out": f"{type(e).__name__}: {e}"})
+
+    return {"ok": True, "target": target, "sent": sent}
+
+
+def perceive_json(force_snapshot_backend: str = "rpicam", sweep_head: bool = False, describe: bool = False, publish_whatsapp: bool = False) -> Dict[str, Any]:
     """Environment perception without driving.
 
     Includes:
@@ -348,6 +386,9 @@ def perceive_json(force_snapshot_backend: str = "rpicam", sweep_head: bool = Fal
     base["camera"] = {"ok": True, "mode": "head_sweep", "shots": shots}
     base["actuators"] = {"head_pan_tilt": "unknown", "drive": "blocked_without_go"}
 
+    if publish_whatsapp:
+        base["publish"] = {"whatsapp": _publish_whatsapp_images(shots)}
+
     if describe:
         base["perception"] = _describe_with_openai(shots)
 
@@ -387,6 +428,7 @@ def main(argv=None) -> int:
     ap_perc.add_argument("--snapshot-backend", default=os.environ.get("PICARX_SNAPSHOT_BACKEND", "rpicam"))
     ap_perc.add_argument("--sweep-head", action="store_true", help="Take 5 images: left/center/right + up/down")
     ap_perc.add_argument("--describe", action="store_true", help="Use a vision model to interpret the images")
+    ap_perc.add_argument("--publish-whatsapp", action="store_true", help="Send captured images to WhatsApp chat (adds to shared session context)")
 
     args = ap.parse_args(argv)
 
@@ -407,6 +449,7 @@ def main(argv=None) -> int:
             force_snapshot_backend=args.snapshot_backend,
             sweep_head=bool(args.sweep_head),
             describe=bool(args.describe),
+            publish_whatsapp=bool(args.publish_whatsapp),
         )
         print(json.dumps(obj, ensure_ascii=False))
         return 0
