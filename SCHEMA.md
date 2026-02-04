@@ -147,6 +147,15 @@ Environment perception without driving.
       {"label":"up","pan":0,"tilt":20,"snapshot":{"ok":true,"path":"..."}},
       {"label":"down","pan":0,"tilt":-20,"snapshot":{"ok":true,"path":"..."}}
     ]
+  },
+  "perception": {
+    "ok": true,
+    "model": "gpt-4o-mini",
+    "result": {
+      "summary": "...",
+      "risk_level": "low",
+      "hazards": []
+    }
   }
 }
 ```

@@ -22,7 +22,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 
 
 def _now_iso() -> str:
@@ -189,7 +189,91 @@ def _run_json(cmd: list[str], timeout: float = 10.0, env: Optional[dict] = None)
         return False, {"ok": False, "error": f"{type(e).__name__}: {e}"}, ""
 
 
-def perceive_json(force_snapshot_backend: str = "rpicam", sweep_head: bool = False) -> Dict[str, Any]:
+def _openai_api_key() -> Optional[str]:
+    # prefer env, fallback to OpenClaw config if present
+    key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if key:
+        return key
+    try:
+        # OpenClaw stores keys under ~/.openclaw/openclaw.json
+        import json as _json
+
+        cfg_path = os.path.expanduser("/home/admin/.openclaw/openclaw.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = _json.load(f)
+        return (((cfg.get("skills") or {}).get("entries") or {}).get("openai-whisper-api") or {}).get("apiKey")
+    except Exception:
+        return None
+
+
+def _describe_with_openai(shots: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Describe environment and hazards from labeled images.
+
+    Returns a structured dict, best-effort.
+    """
+    key = _openai_api_key()
+    if not key:
+        return {"ok": False, "error": "OPENAI_API_KEY not set"}
+
+    # Lazy import to avoid hard dependency if unused
+    import base64
+    import requests
+
+    model = os.environ.get("PICARX_VISION_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+
+    def as_data_url(path: str) -> str:
+        b = open(path, "rb").read()
+        enc = base64.b64encode(b).decode("ascii")
+        return f"data:image/jpeg;base64,{enc}"
+
+    content = [
+        {
+            "type": "text",
+            "text": (
+                "You are a robot health/perception module. Analyze the images (left/center/right/up/down). "
+                "Return concise JSON with keys: summary, where_am_i_guess, hazards (array), risk_level (low|medium|high), "
+                "and left_right_notes (object with left/center/right/up/down strings). "
+                "Do NOT identify people or guess identities; describe only what is visible and safety-relevant."
+            ),
+        }
+    ]
+
+    for s in shots:
+        path = (((s.get("snapshot") or {}).get("path")) or "")
+        if not path or not os.path.exists(path):
+            continue
+        label = s.get("label") or "unknown"
+        content.append({"type": "text", "text": f"Image label: {label}"})
+        content.append({"type": "image_url", "image_url": {"url": as_data_url(path)}})
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You are a careful, safety-focused robot perception assistant."},
+            {"role": "user", "content": content},
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.2,
+    }
+
+    try:
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=45,
+        )
+        if r.status_code != 200:
+            return {"ok": False, "error": f"openai_http_{r.status_code}", "detail": r.text[:500]}
+        data = r.json()
+        txt = (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+        obj = json.loads(txt) if txt.startswith("{") else {"summary": txt}
+        return {"ok": True, "model": model, "result": obj}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+def perceive_json(force_snapshot_backend: str = "rpicam", sweep_head: bool = False, describe: bool = False) -> Dict[str, Any]:
     """Environment perception without driving.
 
     Includes:
@@ -263,6 +347,10 @@ def perceive_json(force_snapshot_backend: str = "rpicam", sweep_head: bool = Fal
 
     base["camera"] = {"ok": True, "mode": "head_sweep", "shots": shots}
     base["actuators"] = {"head_pan_tilt": "unknown", "drive": "blocked_without_go"}
+
+    if describe:
+        base["perception"] = _describe_with_openai(shots)
+
     return base
 
 
@@ -298,6 +386,7 @@ def main(argv=None) -> int:
     ap_perc = sub.add_parser("perceive", help="Environment perception (camera + ultrasonic), no driving")
     ap_perc.add_argument("--snapshot-backend", default=os.environ.get("PICARX_SNAPSHOT_BACKEND", "rpicam"))
     ap_perc.add_argument("--sweep-head", action="store_true", help="Take 5 images: left/center/right + up/down")
+    ap_perc.add_argument("--describe", action="store_true", help="Use a vision model to interpret the images")
 
     args = ap.parse_args(argv)
 
@@ -314,7 +403,11 @@ def main(argv=None) -> int:
         return voltage_log(path=path, interval_s=args.interval, duration_s=args.duration)
 
     if args.cmd == "perceive":
-        obj = perceive_json(force_snapshot_backend=args.snapshot_backend, sweep_head=bool(args.sweep_head))
+        obj = perceive_json(
+            force_snapshot_backend=args.snapshot_backend,
+            sweep_head=bool(args.sweep_head),
+            describe=bool(args.describe),
+        )
         print(json.dumps(obj, ensure_ascii=False))
         return 0
 
