@@ -154,14 +154,24 @@ Not implemented inside this repo, but required for the robot body experience:
 
 ## 4) Diagnostics / self-awareness (v0.1)
 
-Provide a lightweight health interface (can be a separate script) returning:
+Provide a lightweight health interface (implemented in this repo) returning:
 - host temp + `vcgencmd get_throttled` flags (undervoltage/throttling)
 - Robot-HAT battery voltage (best effort)
 - optional voltage logger to correlate sag during load
 
-Recommended commands:
+Commands:
 - `healthcheck.py health` → one JSON object
 - `healthcheck.py voltage-log --interval 2 --duration 120` → JSONL samples
+
+## 4.1 Battery warnings (programmatic, no model)
+
+This repo includes `battery_watch.py`, a pure programmatic watcher:
+- reads Robot-HAT battery voltage
+- estimates % for a 2S pack
+- sends alerts at ~20% and ~10% (one-time per discharge)
+- WhatsApp alert via OpenClaw CLI + local voice alert via `navis_media.py`
+
+Optional systemd user units are provided in `systemd/`.
 
 ---
 

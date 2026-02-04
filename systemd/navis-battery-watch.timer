@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Navis battery watchdog every 60s
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+Unit=navis-battery-watch.service
+
+[Install]
+WantedBy=default.target

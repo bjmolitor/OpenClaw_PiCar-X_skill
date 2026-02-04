@@ -1,0 +1,8 @@
+[Unit]
+Description=Navis battery watchdog (PiCar-X)
+
+[Service]
+Type=oneshot
+# Reuse the main Navis env file to avoid duplication.
+EnvironmentFile=/home/admin/.config/navis01/navis_listen.env
+ExecStart=/usr/bin/python3 /home/admin/picar-x/OpenClaw_PiCar-X_skill/battery_watch.py
