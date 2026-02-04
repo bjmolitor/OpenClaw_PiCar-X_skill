@@ -119,6 +119,7 @@ Each line is a `health` object plus `cmd:"voltage_log"`.
 ## perceive (new in v0.1)
 Environment perception without driving.
 
+### single snapshot
 ```json
 {
   "ok": true,
@@ -128,5 +129,24 @@ Environment perception without driving.
     "ultrasonic": {"ok": true, "distance_cm": 37.2}
   },
   "camera": {"ok": true, "path": ".../snap.jpg", "backend": "rpicam"}
+}
+```
+
+### head sweep (5 shots)
+```json
+{
+  "ok": true,
+  "cmd": "perceive",
+  "camera": {
+    "ok": true,
+    "mode": "head_sweep",
+    "shots": [
+      {"label":"left","pan":-20,"tilt":0,"snapshot":{"ok":true,"path":"..."}},
+      {"label":"center","pan":0,"tilt":0,"snapshot":{"ok":true,"path":"..."}},
+      {"label":"right","pan":20,"tilt":0,"snapshot":{"ok":true,"path":"..."}},
+      {"label":"up","pan":0,"tilt":20,"snapshot":{"ok":true,"path":"..."}},
+      {"label":"down","pan":0,"tilt":-20,"snapshot":{"ok":true,"path":"..."}}
+    ]
+  }
 }
 ```

@@ -163,8 +163,7 @@ Commands:
 - `healthcheck.py health` → one JSON object
 - `healthcheck.py voltage-log --interval 2 --duration 120` → JSONL samples
 - `healthcheck.py perceive` → ultrasonic + snapshot (no driving)
-
-Note: `perceive` does not move the head. A future `--sweep-head` mode can be added (GO-gated).
+- `healthcheck.py perceive --sweep-head` → 5 images: left/center/right + up/down (head-only, no driving)
 
 ## 4.1 Battery warnings (programmatic, no model)
 

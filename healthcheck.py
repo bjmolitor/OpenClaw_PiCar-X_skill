@@ -189,14 +189,18 @@ def _run_json(cmd: list[str], timeout: float = 10.0, env: Optional[dict] = None)
         return False, {"ok": False, "error": f"{type(e).__name__}: {e}"}, ""
 
 
-def perceive_json(force_snapshot_backend: str = "rpicam") -> Dict[str, Any]:
+def perceive_json(force_snapshot_backend: str = "rpicam", sweep_head: bool = False) -> Dict[str, Any]:
     """Environment perception without driving.
 
     Includes:
     - ultrasonic distance
-    - camera snapshot (best effort)
+    - camera snapshot(s) (best effort)
 
-    Left/right sweep is not done by default (head can be mechanically damaged).
+    If `sweep_head` is enabled, performs a small head scan and captures 5 images:
+    - left, center, right (tilt 0)
+    - up, down (pan 0)
+
+    Head movement is treated as *low risk* (no chassis motion).
     """
     base = health_json()
     base["cmd"] = "perceive"
@@ -213,17 +217,52 @@ def perceive_json(force_snapshot_backend: str = "rpicam") -> Dict[str, Any]:
         "ultrasonic": obj_u if obj_u else {"ok": ok_u, "raw": raw_u[-400:]},
     }
 
-    # Snapshot
-    ok_s, obj_s, raw_s = _run_json([sys.executable, ai, "snapshot", "--json"], timeout=15.0, env=env)
-    # If rpicam isn't available and vilib fails, we still return diagnostics.
-    base["camera"] = obj_s if obj_s else {"ok": ok_s, "raw": raw_s[-800:]}
+    # Default single snapshot (no sweep)
+    if not sweep_head:
+        ok_s, obj_s, raw_s = _run_json([sys.executable, ai, "snapshot", "--json"], timeout=15.0, env=env)
+        base["camera"] = obj_s if obj_s else {"ok": ok_s, "raw": raw_s[-800:]}
+        base["actuators"] = {"head_pan_tilt": "unknown", "drive": "blocked_without_go"}
+        return base
 
-    # Actuators (v0.1): motion is gated outside this safe routine.
-    base["actuators"] = {
-        "head_pan_tilt": "unknown",
-        "drive": "blocked_without_go",
-    }
+    # Head sweep: L, C, R, (return center no photo), Up, Down.
+    pan = int(os.environ.get("PICARX_SWEEP_PAN", "20"))
+    tilt = int(os.environ.get("PICARX_SWEEP_TILT", "20"))
 
+    shots = []
+
+    def head(p: int, t: int) -> None:
+        _run_json([sys.executable, ai, "head", "--pan", str(p), "--tilt", str(t), "--json"], timeout=6.0, env=env)
+        time.sleep(float(os.environ.get("PICARX_SWEEP_SETTLE_S", "0.20")))
+
+    def snap(label: str, p: int, t: int) -> None:
+        ok, obj, raw = _run_json([sys.executable, ai, "snapshot", "--json"], timeout=15.0, env=env)
+        shots.append({"label": label, "pan": p, "tilt": t, "snapshot": (obj if obj else {"ok": ok, "raw": raw[-800:]})})
+
+    # left, center, right (with photos)
+    head(-pan, 0)
+    snap("left", -pan, 0)
+
+    head(0, 0)
+    snap("center", 0, 0)
+
+    head(pan, 0)
+    snap("right", pan, 0)
+
+    # return center (no photo)
+    head(0, 0)
+
+    # up, down (with photos)
+    head(0, tilt)
+    snap("up", 0, tilt)
+
+    head(0, -tilt)
+    snap("down", 0, -tilt)
+
+    # back to center (no photo)
+    head(0, 0)
+
+    base["camera"] = {"ok": True, "mode": "head_sweep", "shots": shots}
+    base["actuators"] = {"head_pan_tilt": "unknown", "drive": "blocked_without_go"}
     return base
 
 
@@ -258,6 +297,7 @@ def main(argv=None) -> int:
 
     ap_perc = sub.add_parser("perceive", help="Environment perception (camera + ultrasonic), no driving")
     ap_perc.add_argument("--snapshot-backend", default=os.environ.get("PICARX_SNAPSHOT_BACKEND", "rpicam"))
+    ap_perc.add_argument("--sweep-head", action="store_true", help="Take 5 images: left/center/right + up/down")
 
     args = ap.parse_args(argv)
 
@@ -274,7 +314,7 @@ def main(argv=None) -> int:
         return voltage_log(path=path, interval_s=args.interval, duration_s=args.duration)
 
     if args.cmd == "perceive":
-        obj = perceive_json(force_snapshot_backend=args.snapshot_backend)
+        obj = perceive_json(force_snapshot_backend=args.snapshot_backend, sweep_head=bool(args.sweep_head))
         print(json.dumps(obj, ensure_ascii=False))
         return 0
 
