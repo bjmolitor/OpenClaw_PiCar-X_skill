@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -22,7 +23,7 @@ try:
 except Exception:  # pragma: no cover
     np = None
 
-from checks.media.audio import AudioPaths, _enable_robot_hat_speaker_best_effort
+from checks.media.audio import AudioPaths, _enable_robot_hat_speaker_best_effort, _set_speaker_volume_best_effort
 from checks.media.common import CmdResult, ensure_dir, run_cmd
 
 
@@ -33,6 +34,10 @@ class SoundcheckConfig:
     freqs: Tuple[int, ...] = (220, 440, 880, 1760)
     max_lag_s: float = 0.80
     min_corr: float = 0.05
+
+
+def _norm_text(s: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", (s or "").lower()).split())
 
 
 def _wav_write_mono_s16(path: str, samples: "np.ndarray", rate: int) -> None:
@@ -86,6 +91,110 @@ def default_paths(workspace: str) -> Tuple[str, str]:
     return ref, rec
 
 
+def _default_vosk_model_dir() -> str:
+    env = os.environ.get("NAVIS_VOSK_MODEL_DIR", "").strip()
+    if env:
+        return env
+    candidates = [
+        "/home/admin/.openclaw/workspace/models/vosk-model-small-de-0.15",
+        "/home/admin/picar-x/OpenClaw_PiCar-X_skill/models/vosk-model-small-de-0.15",
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return candidates[0]
+
+
+def _synth_activation_ref(path: str, text: str) -> Dict:
+    pico2wave = __import__("shutil").which("pico2wave")
+    if not pico2wave:
+        raise FileNotFoundError("pico2wave not found")
+    # Prefer German voice for Navis wake phrase context.
+    cmd = [pico2wave, "-l", "de-DE", "-w", path, text]
+    p = run_cmd(cmd, timeout_s=12, max_chars=2000)
+    if p.rc != 0:
+        raise RuntimeError(f"pico2wave failed rc={p.rc}: {p.out}")
+    return {"cmd": cmd, "rc": p.rc, "out": p.out}
+
+
+def _play_and_record(ref_path: str, rec_path: str, *, rate: int, seconds: float, mic_device: str, spk_device: str) -> Dict:
+    import shutil
+    import subprocess
+    import time
+
+    arecord_exe = shutil.which("arecord")
+    if not arecord_exe:
+        raise FileNotFoundError("arecord not found")
+    aplay_exe = shutil.which("aplay")
+    if not aplay_exe:
+        raise FileNotFoundError("aplay not found")
+
+    arecord_cmd = [arecord_exe]
+    if mic_device:
+        arecord_cmd += ["-D", mic_device]
+    dur_s = max(1, int(round(float(seconds) + 0.3)))
+    arecord_cmd += ["-f", "S16_LE", "-r", str(rate), "-c", "1", "-d", str(dur_s), rec_path]
+
+    aplay_cmd = [aplay_exe]
+    if spk_device:
+        aplay_cmd += ["-D", spk_device]
+    aplay_cmd += [ref_path]
+
+    arec = subprocess.Popen(arecord_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    time.sleep(0.12)
+    play_res = run_cmd(aplay_cmd, timeout_s=int(dur_s) + 20, max_chars=2000)
+    out_arec, _ = arec.communicate(timeout=int(dur_s) + 25)
+
+    return {
+        "arecord_cmd": arecord_cmd,
+        "arecord_rc": arec.returncode,
+        "arecord_out": (out_arec or "").strip()[:2000],
+        "aplay_cmd": aplay_cmd,
+        "aplay_rc": play_res.rc,
+        "aplay_out": (play_res.out or "").strip()[:2000],
+    }
+
+
+def _vosk_text_from_wav(wav_path: str, model_dir: str, expected_phrases: List[str]) -> str:
+    import json
+    import wave
+    from vosk import KaldiRecognizer, Model as VoskModel, SetLogLevel
+
+    if not os.path.isdir(model_dir):
+        raise FileNotFoundError(f"Vosk model missing: {model_dir}")
+
+    with wave.open(wav_path, "rb") as wf:
+        rate = wf.getframerate()
+        if wf.getnchannels() != 1:
+            raise RuntimeError("Vosk check requires mono WAV")
+        SetLogLevel(-1)
+        model = VoskModel(model_dir)
+        try:
+            rec = KaldiRecognizer(model, rate, json.dumps(expected_phrases, ensure_ascii=False))
+        except Exception:
+            rec = KaldiRecognizer(model, rate)
+        rec.SetWords(False)
+        best_partial = ""
+        while True:
+            data = wf.readframes(4000)
+            if not data:
+                break
+            rec.AcceptWaveform(data)
+            try:
+                p = json.loads(rec.PartialResult() or "{}")
+                pt = _norm_text(p.get("partial", "") or "")
+                if len(pt) > len(best_partial):
+                    best_partial = pt
+            except Exception:
+                pass
+        try:
+            r = json.loads(rec.FinalResult() or "{}")
+        except Exception:
+            r = {}
+    final_text = _norm_text(r.get("text", "") or "")
+    return final_text or best_partial
+
+
 def run_soundcheck(
     *,
     workspace: str,
@@ -107,32 +216,10 @@ def run_soundcheck(
     # Default to enabling onboard speaker amp for reliable acoustic path checks.
     os.environ.setdefault("NAVIS_ENABLE_ROBOT_HAT_SPEAKER", "1")
     _enable_robot_hat_speaker_best_effort()
+    _set_speaker_volume_best_effort(device=spk_device)
 
-    import shutil
-
-    arecord_exe = shutil.which("arecord")
-    if not arecord_exe:
-        raise FileNotFoundError("arecord not found")
-    aplay_exe = shutil.which("aplay")
-    if not aplay_exe:
-        raise FileNotFoundError("aplay not found")
-
-    # Start recording first to avoid missing the beginning.
-    arecord_cmd = [arecord_exe]
     dev = mic_device or os.environ.get("NAVIS_MIC_DEVICE", "").strip() or "plughw:3,0"
-    if dev:
-        arecord_cmd += ["-D", dev]
-    # Record slightly longer than playback to ensure we capture the full played signal.
-    dur_s = max(1, int(round(float(cfg.seconds) + 0.2)))
-    arecord_cmd += ["-f", "S16_LE", "-r", str(cfg.rate), "-c", "1", "-d", str(dur_s), rec_path]
-
-    aplay_cmd = [aplay_exe]
     spk = spk_device or os.environ.get("NAVIS_SPK_DEVICE", "").strip() or "plughw:2,0"
-    if spk:
-        aplay_cmd += ["-D", spk]
-    aplay_cmd += [ref_path]
-
-    import subprocess
 
     evidence_cmds = []
 
@@ -140,21 +227,11 @@ def run_soundcheck(
     evidence_cmds.append(run_cmd(["bash", "-lc", "systemctl --user stop navis-listen.service 2>/dev/null || true"], timeout_s=6, max_chars=1000))
 
     # Launch arecord in background, then play.
-    arec = subprocess.Popen(arecord_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    try:
-        import time
-
-        time.sleep(0.12)
-        play_res = run_cmd(aplay_cmd, timeout_s=int(dur_s) + 20, max_chars=2000)
-        out_arec, _ = arec.communicate(timeout=int(dur_s) + 25)
-        arec_rc = arec.returncode
-    finally:
-        # Best-effort: restart listener.
-        evidence_cmds.append(run_cmd(["bash", "-lc", "systemctl --user start navis-listen.service 2>/dev/null || true"], timeout_s=6, max_chars=1000))
+    tone_io = _play_and_record(ref_path, rec_path, rate=cfg.rate, seconds=cfg.seconds, mic_device=dev, spk_device=spk)
 
     # Ensure recording exists
     if not os.path.exists(rec_path) or os.path.getsize(rec_path) == 0:
-        raise RuntimeError(f"arecord produced no file rc={arec_rc} out={(out_arec or '').strip()[:2000]}")
+        raise RuntimeError(f"arecord produced no file rc={tone_io['arecord_rc']} out={tone_io['arecord_out']}")
 
     # Load recorded + reference from disk and compute correlation
     rr, y = _wav_read_mono_s16(rec_path)
@@ -191,7 +268,37 @@ def run_soundcheck(
             best = c
             best_lag = lag
 
-    ok = bool(abs(best) >= cfg.min_corr) and bool(rms_rec > 0.005)
+    tone_ok = bool(abs(best) >= cfg.min_corr) and bool(rms_rec > 0.005)
+
+    # Wakeword verification: synthesize activation phrase, record loopback, then run Vosk decode.
+    wake_phrases_raw = os.environ.get("NAVIS_WAKE_PHRASES") or os.environ.get("NAVIS_WAKE_PHRASE", "navis,na bis")
+    wake_phrases = [_norm_text(x) for x in wake_phrases_raw.split(",") if _norm_text(x)]
+    if not wake_phrases:
+        wake_phrases = ["navis"]
+    activation_text = wake_phrases[0]
+    wake_ref_path = os.path.join(workspace, "audio", f"soundcheck-wake-ref-{datetime.now().strftime('%Y%m%d-%H%M%S')}.wav")
+    wake_rec_path = os.path.join(workspace, "audio", f"soundcheck-wake-rec-{datetime.now().strftime('%Y%m%d-%H%M%S')}.wav")
+
+    wake_tts = _synth_activation_ref(wake_ref_path, activation_text)
+    wake_seconds = 2.0
+    try:
+        import wave as _wave
+        with _wave.open(wake_ref_path, "rb") as wf:
+            wake_seconds = max(1.2, float(wf.getnframes()) / float(max(1, wf.getframerate())))
+    except Exception:
+        pass
+
+    wake_io = _play_and_record(wake_ref_path, wake_rec_path, rate=cfg.rate, seconds=wake_seconds, mic_device=dev, spk_device=spk)
+    if not os.path.exists(wake_rec_path) or os.path.getsize(wake_rec_path) == 0:
+        raise RuntimeError(f"wake arecord produced no file rc={wake_io['arecord_rc']} out={wake_io['arecord_out']}")
+
+    vosk_model_dir = _default_vosk_model_dir()
+    heard_text = _vosk_text_from_wav(wake_rec_path, vosk_model_dir, wake_phrases)
+    wake_ok = bool(heard_text and any(wp in heard_text for wp in wake_phrases))
+    ok = bool(tone_ok and wake_ok)
+
+    # Best-effort: restart listener after the full check sequence.
+    evidence_cmds.append(run_cmd(["bash", "-lc", "systemctl --user start navis-listen.service 2>/dev/null || true"], timeout_s=6, max_chars=1000))
 
     return {
         "ok": ok,
@@ -201,12 +308,29 @@ def run_soundcheck(
         "mic_device": dev or None,
         "ref": {"path": ref_path, "rate": cfg.rate, "seconds": cfg.seconds, "freqs": list(cfg.freqs)},
         "rec": {"path": rec_path},
-        "metrics": {"corr_peak": best, "corr_lag_s": best_lag / float(cfg.rate), "rms_ref": rms_ref, "rms_rec": rms_rec, "min_corr": cfg.min_corr, "max_lag_s": cfg.max_lag_s},
+        "wake_ref": {"path": wake_ref_path, "text": activation_text},
+        "wake_rec": {"path": wake_rec_path},
+        "metrics": {
+            "corr_peak": best,
+            "corr_lag_s": best_lag / float(cfg.rate),
+            "rms_ref": rms_ref,
+            "rms_rec": rms_rec,
+            "min_corr": cfg.min_corr,
+            "max_lag_s": cfg.max_lag_s,
+            "tone_ok": tone_ok,
+            "wake_ok": wake_ok,
+            "wake_heard_text": heard_text,
+            "wake_expected_phrases": wake_phrases,
+            "wake_vosk_model_dir": vosk_model_dir,
+        },
         "evidence": {
             "commands": [
                 *[{"cmd": c.cmd, "rc": c.rc, "out": c.out} for c in evidence_cmds],
-                {"cmd": arecord_cmd, "rc": arec_rc, "out": (out_arec or "").strip()[:2000]},
-                {"cmd": aplay_cmd, "rc": play_res.rc, "out": (play_res.out or "").strip()[:2000]},
+                {"cmd": tone_io["arecord_cmd"], "rc": tone_io["arecord_rc"], "out": tone_io["arecord_out"]},
+                {"cmd": tone_io["aplay_cmd"], "rc": tone_io["aplay_rc"], "out": tone_io["aplay_out"]},
+                {"cmd": wake_tts["cmd"], "rc": wake_tts["rc"], "out": wake_tts["out"]},
+                {"cmd": wake_io["arecord_cmd"], "rc": wake_io["arecord_rc"], "out": wake_io["arecord_out"]},
+                {"cmd": wake_io["aplay_cmd"], "rc": wake_io["aplay_rc"], "out": wake_io["aplay_out"]},
             ]
         },
     }

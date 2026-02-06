@@ -14,6 +14,7 @@ Device selection is controlled by env:
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -62,6 +63,33 @@ def _enable_robot_hat_speaker_best_effort() -> bool:
     return False
 
 
+def _set_speaker_volume_best_effort(device: Optional[str] = None) -> bool:
+    """Set speaker output volume to the configured default.
+
+    Default is 100% for reliable wake/beep audibility on PiCar-X setups.
+    Env overrides:
+    - NAVIS_SPK_VOLUME (default: 100)
+    - NAVIS_SPK_CARD (default: 2)
+    """
+    amixer = shutil.which("amixer")
+    if not amixer:
+        return False
+
+    vol = str(os.environ.get("NAVIS_SPK_VOLUME", "100")).strip() or "100"
+    if not re.fullmatch(r"\d{1,3}", vol):
+        vol = "100"
+    vol_i = max(0, min(100, int(vol)))
+
+    card = str(os.environ.get("NAVIS_SPK_CARD", "2")).strip() or "2"
+    dev = (device or os.environ.get("NAVIS_SPK_DEVICE", "").strip() or "")
+    m = re.search(r"(?:plughw|hw):(\d+),\d+", dev)
+    if m:
+        card = m.group(1)
+
+    r = run_cmd([amixer, "-c", card, "sset", "PCM", f"{vol_i}%"], timeout_s=3, max_chars=500)
+    return r.rc == 0
+
+
 def record_mic_wav(*, out_path: str, seconds: int = 3, rate: int = 16000, device: Optional[str] = None) -> Tuple[str, CmdResult, str]:
     """Record a mono WAV from the microphone using arecord."""
     ensure_dir(os.path.dirname(out_path))
@@ -95,6 +123,7 @@ def play_wav(*, path: str, timeout_s: int = 20, device: Optional[str] = None) ->
     Prefers paplay if available (to use default PipeWire/Pulse routing), otherwise aplay.
     """
     _enable_robot_hat_speaker_best_effort()
+    _set_speaker_volume_best_effort(device=device)
 
     # Allow forcing ALSA device
     # Baseline hardware default: onboard DAC on ALSA card 2.

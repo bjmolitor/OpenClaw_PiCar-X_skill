@@ -5,6 +5,7 @@ Produces reference + recorded WAV artifacts and correlation metrics.
 """
 
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -28,6 +29,12 @@ def main() -> None:
             r["artifacts"].append({"kind": "audio", "path": ref, "desc": "soundcheck reference"})
         if rec:
             r["artifacts"].append({"kind": "audio", "path": rec, "desc": "soundcheck recording"})
+        wake_ref = (sc.get("wake_ref") or {}).get("path")
+        wake_rec = (sc.get("wake_rec") or {}).get("path")
+        if wake_ref:
+            r["artifacts"].append({"kind": "audio", "path": wake_ref, "desc": "wakeword reference"})
+        if wake_rec:
+            r["artifacts"].append({"kind": "audio", "path": wake_rec, "desc": "wakeword recording"})
 
         for c in (sc.get("evidence") or {}).get("commands") or []:
             r["evidence"]["commands"].append(c)
@@ -36,6 +43,14 @@ def main() -> None:
         r["ok"] = False
         r["error"] = "soundcheck_failed"
         r["notes"].append(str(e))
+    finally:
+        # Ensure listener returns after active soundcheck, even on failure.
+        subprocess.run(
+            ["bash", "-lc", "systemctl --user start navis-listen.service 2>/dev/null || true"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
 
     emit(r)
 

@@ -173,6 +173,10 @@ Commands:
 - `healthcheck.py perceive --sweep-head --describe` → same + LMM interpretation ("where am I / hazards")
 - `healthcheck.py perceive --sweep-head --publish-whatsapp` → send 5 images into WhatsApp history (shared session context)
 
+Audio default:
+- Skill audio checks default speaker output to **100% PCM** (configurable via `NAVIS_SPK_VOLUME`, default `100`)
+  to keep wake/beep cues clearly audible.
+
 ## 4.1 Battery warnings (programmatic, no model)
 
 This repo includes `battery_watch.py`, a pure programmatic watcher:
