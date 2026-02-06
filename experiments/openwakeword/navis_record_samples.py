@@ -39,11 +39,21 @@ def run(cmd, timeout=30, check=True):
 
 
 def beep():
-    # Prefer a deterministic local WAV beep via ALSA; avoid TTS startup/hangs.
+    # Prefer a short synthetic sine beep (no spoken prompt).
     dev = os.environ.get("NAVIS_SPK_DEVICE", "plughw:2,0").strip() or "plughw:2,0"
+    speaker_test = shutil.which("speaker-test")
     aplay = shutil.which("aplay")
-    tone = "/usr/share/sounds/alsa/Front_Center.wav"
+    tone = "/usr/share/sounds/alsa/Noise.wav"
     try:
+        if speaker_test:
+            subprocess.run(
+                [speaker_test, "-D", dev, "-t", "sine", "-f", "1200", "-l", "1", "-s", "1"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+                check=False,
+            )
+            return
         if aplay and os.path.exists(tone):
             subprocess.run([aplay, "-D", dev, tone], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
             return
@@ -78,6 +88,10 @@ def run_soundcheck_gate(mic_device: str):
         raise
     except Exception as e:
         raise SystemExit(f"[record] soundcheck gate failed: could not parse output ({e}). Raw output:\n{p.stdout}")
+
+
+def stop_listener_best_effort():
+    run(["systemctl", "--user", "stop", "navis-listen.service"], timeout=10, check=False)
 
 
 def record_wav(out_path: str, device: str, seconds: float, rate: int = 16000):
@@ -117,8 +131,11 @@ def main():
     args = ap.parse_args()
 
     if not args.no_soundcheck_gate:
+        stop_listener_best_effort()
         print("[record] running soundcheck gate...")
         run_soundcheck_gate(args.device)
+        # soundcheck currently restarts listener; stop again before recording.
+        stop_listener_best_effort()
         print("[record] soundcheck gate passed")
     else:
         print("[record] WARNING: soundcheck gate skipped by flag")

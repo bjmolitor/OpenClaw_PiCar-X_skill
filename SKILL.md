@@ -4,6 +4,12 @@ This file defines the **Skill contract** for integrating SunFounder **PiCar‑X 
 
 > Principle: the agent never talks to hardware directly. It calls **deterministic CLI tools** that return **JSON**.
 
+## Hardware recommendation (Raspberry Pi 5 thermals)
+
+- For stable operation under sustained load (audio + vision + checks + agent runtime), an additional
+  **active cooler is recommended** on Raspberry Pi 5.
+- The current setup uses an **Armor Lite V5** active cooler and this class of cooler is considered recommended.
+
 ---
 
 ## 0) Safety model (non‑negotiable)
@@ -187,4 +193,3 @@ v0.1 is acceptable when:
 - `stop` works.
 - All movement commands are clamped and stop automatically.
 - GO gate exists in the OpenClaw wrapper/prompt rules.
-

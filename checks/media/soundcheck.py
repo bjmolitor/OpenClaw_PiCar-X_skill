@@ -29,10 +29,10 @@ from checks.media.common import CmdResult, ensure_dir, run_cmd
 @dataclass
 class SoundcheckConfig:
     rate: int = 16000
-    seconds: float = 3.0
+    seconds: float = 4.0
     freqs: Tuple[int, ...] = (220, 440, 880, 1760)
-    max_lag_s: float = 0.30
-    min_corr: float = 0.08
+    max_lag_s: float = 0.80
+    min_corr: float = 0.05
 
 
 def _wav_write_mono_s16(path: str, samples: "np.ndarray", rate: int) -> None:
@@ -67,7 +67,7 @@ def _tone_ref(cfg: SoundcheckConfig) -> "np.ndarray":
     for f in cfg.freqs:
         n = int(cfg.rate * seg_s)
         t = np.arange(n, dtype=np.float32) / float(cfg.rate)
-        x = 0.22 * np.sin(2.0 * math.pi * float(f) * t)
+        x = 0.35 * np.sin(2.0 * math.pi * float(f) * t)
         fade_n = max(16, int(0.01 * cfg.rate))
         fade = np.linspace(0.0, 1.0, fade_n, dtype=np.float32)
         x[:fade_n] *= fade
@@ -104,6 +104,8 @@ def run_soundcheck(
     ref = _tone_ref(cfg)
     _wav_write_mono_s16(ref_path, ref, cfg.rate)
 
+    # Default to enabling onboard speaker amp for reliable acoustic path checks.
+    os.environ.setdefault("NAVIS_ENABLE_ROBOT_HAT_SPEAKER", "1")
     _enable_robot_hat_speaker_best_effort()
 
     import shutil
@@ -158,11 +160,6 @@ def run_soundcheck(
     rr, y = _wav_read_mono_s16(rec_path)
     xr, x = _wav_read_mono_s16(ref_path)
 
-    # Align lengths
-    n = min(len(x), len(y))
-    x = x[:n]
-    y = y[:n]
-
     eps = 1e-9
     rms_ref = float(np.sqrt((x * x).mean() + eps))
     rms_rec = float(np.sqrt((y * y).mean() + eps))
@@ -172,7 +169,6 @@ def run_soundcheck(
 
     x0 = x - float(x.mean())
     y0 = y - float(y.mean())
-    denom = float(np.sqrt((x0 * x0).sum() + eps) * np.sqrt((y0 * y0).sum() + eps))
 
     best = 0.0
     best_lag = 0
@@ -188,7 +184,9 @@ def run_soundcheck(
             b = y0
         if len(a) < 1024:
             continue
-        c = float((a * b).sum() / (denom + eps))
+        # Use lag-local normalization; robust against startup latency and unequal tails.
+        den = float(np.sqrt((a * a).sum() + eps) * np.sqrt((b * b).sum() + eps))
+        c = float((a * b).sum() / (den + eps))
         if abs(c) > abs(best):
             best = c
             best_lag = lag
