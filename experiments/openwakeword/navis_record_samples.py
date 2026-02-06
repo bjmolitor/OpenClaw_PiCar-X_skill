@@ -22,11 +22,14 @@ Then restart listener:
 
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+import wave
 from datetime import datetime
 
 BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "dataset"))
@@ -38,29 +41,77 @@ def run(cmd, timeout=30, check=True):
     return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout, check=check)
 
 
+def _write_beep_wav(path: str, *, duration_s: float = 0.2, freq_hz: float = 1000.0, rate: int = 16000, amp: float = 0.30):
+    n = max(1, int(rate * duration_s))
+    pcm = bytearray()
+    fade = int(rate * 0.01)  # 10ms fade-in/out
+    for i in range(n):
+        t = i / float(rate)
+        x = math.sin(2.0 * math.pi * freq_hz * t)
+        if i < fade:
+            x *= i / float(fade)
+        elif i >= n - fade:
+            x *= max(0.0, (n - i - 1) / float(fade))
+        s = int(max(-1.0, min(1.0, x * amp)) * 32767.0)
+        pcm += int(s).to_bytes(2, byteorder="little", signed=True)
+
+    with wave.open(path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(bytes(pcm))
+
+
 def beep():
-    # Prefer a short synthetic sine beep (no spoken prompt).
+    # Strict short tone: 200ms, non-speech cue.
     dev = os.environ.get("NAVIS_SPK_DEVICE", "plughw:2,0").strip() or "plughw:2,0"
-    speaker_test = shutil.which("speaker-test")
     aplay = shutil.which("aplay")
-    tone = "/usr/share/sounds/alsa/Noise.wav"
+    if not aplay:
+        return
+
+    tmp_wav = None
     try:
-        if speaker_test:
-            subprocess.run(
-                [speaker_test, "-D", dev, "-t", "sine", "-f", "1200", "-l", "1", "-s", "1"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=3,
-                check=False,
-            )
-            return
-        if aplay and os.path.exists(tone):
-            subprocess.run([aplay, "-D", dev, tone], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
-            return
+        fd, tmp_wav = tempfile.mkstemp(prefix="navis-beep-", suffix=".wav")
+        os.close(fd)
+        _write_beep_wav(tmp_wav, duration_s=0.2, freq_hz=1000.0)
+        subprocess.run([aplay, "-D", dev, tmp_wav], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False)
     except Exception:
         pass
+    finally:
+        if tmp_wav and os.path.exists(tmp_wav):
+            try:
+                os.remove(tmp_wav)
+            except OSError:
+                pass
 
-    # If direct aplay is not available, continue without beep.
+
+def speak_instruction_once():
+    """Multilingual instruction before first positive sample."""
+    dev = os.environ.get("NAVIS_SPK_DEVICE", "plughw:2,0").strip() or "plughw:2,0"
+    pico2wave = shutil.which("pico2wave")
+    aplay = shutil.which("aplay")
+    if not pico2wave or not aplay:
+        return
+
+    lines = [
+        ("de-DE", "Bitte sag das Aktivierungswort einmal nach jedem Piep."),
+        ("en-US", "Please say the wake word once after each beep."),
+    ]
+    for voice, text in lines:
+        tmp_wav = None
+        try:
+            fd, tmp_wav = tempfile.mkstemp(prefix="navis-instruction-", suffix=".wav")
+            os.close(fd)
+            subprocess.run([pico2wave, "-l", voice, "-w", tmp_wav, text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8, check=False)
+            subprocess.run([aplay, "-D", dev, tmp_wav], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8, check=False)
+        except Exception:
+            continue
+        finally:
+            if tmp_wav and os.path.exists(tmp_wav):
+                try:
+                    os.remove(tmp_wav)
+                except OSError:
+                    pass
 
 
 def run_soundcheck_gate(mic_device: str):
@@ -142,6 +193,9 @@ def main():
 
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     print(f"[record] mode={args.mode} count={args.count} device={args.device} seconds={args.seconds} outdir={args.outdir}")
+
+    if args.mode == "pos":
+        speak_instruction_once()
 
     for i in range(1, args.count + 1):
         out = os.path.join(args.outdir, f"{ts}-{args.mode}-{i:03d}.wav")
