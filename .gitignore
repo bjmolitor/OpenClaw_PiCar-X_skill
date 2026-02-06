@@ -4,3 +4,8 @@ aiagent_camera/
 # Python cache
 __pycache__/
 *.pyc
+
+# Generated artifacts
+audio/
+camera/
+experiments/openwakeword/dataset/
