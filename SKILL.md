@@ -14,6 +14,11 @@ This file defines the **Skill contract** for integrating SunFounder **PiCar‑X 
 
 ## 0) Safety model (non‑negotiable)
 
+### Operating assumptions (project intent)
+- OpenClaw is the **agentic control plane** for PiCar‑X.
+- **Primary sensor is the camera**; its image should be injected into the active agent session so the current model can interpret it for decisions (e.g. "is the way ahead free?").
+- PiCar‑X is a light toy‑grade car; per project intent it is considered **unlikely to cause injury**, but safety gates and GO confirmation still apply.
+
 ### Drive gate
 - **Default: NO motion.**
 - Any command that can move the robot (drive/steer/head pan/tilt) is blocked unless the human explicitly grants **GO**.
