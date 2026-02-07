@@ -10,6 +10,15 @@ This file defines the **Skill contract** for integrating SunFounder **PiCar‑X 
   **active cooler is recommended** on Raspberry Pi 5.
 - The current setup uses an **Armor Lite V5** active cooler and this class of cooler is considered recommended.
 
+## PiCar‑X hardware snapshot (public specs)
+
+- **Camera module:** 5 MP sensor, stills up to **2592×1944**, video **1080p/30** and **720p/60**, approx. **65° FOV**.
+- **Sensors:** ultrasonic distance sensor; **3‑channel line‑tracking** module (cliff detection / line follow).
+- **Pan‑tilt:** camera typically mounted on pan‑tilt bracket (current unit damaged/removed).
+- **Size:** approximate length **200–210 mm** (vendor docs vary).
+
+> Sources: SunFounder docs + vendor listings (see recent web_search results via Content‑Cloud MCP).
+
 ---
 
 ## 0) Safety model (non‑negotiable)
