@@ -187,6 +187,13 @@ Commands:
 - `healthcheck.py perceive --sweep-head --describe` → same + LMM interpretation ("where am I / hazards")
 - `healthcheck.py perceive --sweep-head --publish-whatsapp` → send 5 images into WhatsApp history (shared session context)
 
+**Session injection (camera → agent context):**
+- `checks/camera_inject_check.py` captures a snapshot and sends it to a channel/target so it appears in the agent session.
+- Requires env:
+  - `NAVIS_INJECT_CHANNEL` (e.g., `whatsapp`)
+  - `NAVIS_INJECT_TARGET` (e.g., `+4917...`)
+  - optional `NAVIS_INJECT_MESSAGE` (caption)
+
 Audio default:
 - Skill audio checks default speaker output to **100% PCM** (configurable via `NAVIS_SPK_VOLUME`, default `100`)
   to keep wake/beep cues clearly audible.
