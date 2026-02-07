@@ -271,7 +271,11 @@ def run_soundcheck(
     tone_ok = bool(abs(best) >= cfg.min_corr) and bool(rms_rec > 0.005)
 
     # Wakeword verification: synthesize activation phrase, record loopback, then run Vosk decode.
-    wake_phrases_raw = os.environ.get("NAVIS_WAKE_PHRASES") or os.environ.get("NAVIS_WAKE_PHRASE", "navis,na bis")
+    # Default wake phrases (baseline): Navis 01 / Navis null eins
+    wake_phrases_raw = os.environ.get("NAVIS_WAKE_PHRASES") or os.environ.get(
+        "NAVIS_WAKE_PHRASE",
+        "navis 01,navis null eins,navis null 1,navis eins",
+    )
     wake_phrases = [_norm_text(x) for x in wake_phrases_raw.split(",") if _norm_text(x)]
     if not wake_phrases:
         wake_phrases = ["navis"]
