@@ -327,8 +327,14 @@ def _call_method(px: Any, names, *args, **kwargs):
 def _do_drive(px: Any, speed: int, seconds: float, direction: str, max_speed: int) -> Dict[str, Any]:
     # Clamp speed for safety
     sp = int(_clamp(speed, 0, max_speed))
+
+    # Some builds have forward/backward inverted. Default to inverted for this unit.
+    invert = os.environ.get('PICARX_DRIVE_INVERT', '1') not in ('0', 'false', 'False')
+    applied_direction = 'backward' if (invert and direction == 'forward') else \
+        'forward' if (invert and direction == 'backward') else direction
+
     # Best-effort drive using common names; fallback to motors.set_power
-    if direction == 'forward':
+    if applied_direction == 'forward':
         try:
             _call_method(px, ['forward'], sp)
         except Exception:
@@ -352,6 +358,7 @@ def _do_drive(px: Any, speed: int, seconds: float, direction: str, max_speed: in
         'ok': True,
         'action': 'drive',
         'direction': direction,
+        'applied_direction': applied_direction,
         'requested_speed': int(speed),
         'applied_speed': sp,
         'seconds': float(seconds),

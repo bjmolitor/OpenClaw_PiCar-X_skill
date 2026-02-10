@@ -43,6 +43,17 @@ The intended integration pattern:
 - Always use `--json`.
 - Enforce operational constraints in the agent prompt (see `agent_rules.md`).
 
+### Agentic driving (turn wrapper)
+
+For agentic navigation, use the turn wrapper `agentic_drive.py`:
+
+```bash
+# one turn: pre-snapshot -> optional steer -> drive -> post-snapshot
+python3 agentic_drive.py --distance-cm 40 --speed 30 --direction forward --invert 1
+```
+
+(Without `--seconds`, the wrapper uses the calibrated map for 40cm and scales it by `--distance-cm`.)
+
 ## Documentation
 
 - Full CLI docs: `aiagentctrl_aiguide.md`
