@@ -117,7 +117,43 @@ Dokumentiere jeweils:
 
 ---
 
+## Decision JSON Schema (v0)
+
+Erwartetes Format für LMM-Entscheidungen je Turn:
+
+```json
+{
+  "action": "arrived|continue|blocked|uncertain",
+  "steer": 0,
+  "distance_cm": 20,
+  "reason": "kurze Begründung"
+}
+```
+
+Validierung:
+```bash
+python3 decision_schema.py --json '{"action":"continue","steer":0,"distance_cm":20,"reason":"frei"}'
+```
+
+Regeln (v0):
+- `action`: required, Enum
+- `steer`: optional, int [-35..35]
+- `distance_cm`: optional, number [0..80]
+- `reason`: optional, string
+
 ## Nächste Iteration (v2)
 - Recovery-Schritte automatisieren
 - parameter-sensitives Profiling (speed 30/40/50)
 - Objektzentrierte Lenkentscheidung strukturieren (JSON decision schema)
+
+### Draft: Decision-Schema (für LMM-Ausgabe, v0)
+```json
+{
+  "decision": "forward|left|right|stop|arrived",
+  "distance_cm": 20,
+  "speed": 30,
+  "reason": "kurze, konkrete Begründung",
+  "risk": "low|medium|high",
+  "needs_human": false
+}
+```
