@@ -43,6 +43,17 @@ The intended integration pattern:
 - Always use `--json`.
 - Enforce operational constraints in the agent prompt (see `agent_rules.md`).
 
+### OpenClaw namespace router (`picarx.*`)
+
+For concrete OpenClaw-style tool names, use `picarx_tool_router.py`:
+
+```bash
+python3 picarx_tool_router.py picarx.snapshot
+python3 picarx_tool_router.py picarx.ultrasonic
+python3 picarx_tool_router.py picarx.drive --speed 30 --seconds 1.0 --direction forward
+python3 picarx_tool_router.py picarx.turn --distance-cm 40 --speed 30 --direction forward --invert 1
+```
+
 ### Agentic driving (turn wrapper)
 
 For agentic navigation, use the turn wrapper `agentic_drive.py`:
