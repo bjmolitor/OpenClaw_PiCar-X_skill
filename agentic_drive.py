@@ -76,6 +76,14 @@ def _run(cmd, env=None) -> Dict[str, Any]:
         return {"ok": False, "error": "invalid json", "cmd": cmd, "stdout": out, "stderr": p.stderr}
 
 
+def _fail(result: Dict[str, Any], code: str, detail: Any = None) -> Dict[str, Any]:
+    result["ok"] = False
+    result["error"] = {"code": code}
+    if detail is not None:
+        result["error"]["detail"] = detail
+    return result
+
+
 def do_turn(args) -> Dict[str, Any]:
     env = os.environ.copy()
     if args.invert is not None:
@@ -100,22 +108,23 @@ def do_turn(args) -> Dict[str, Any]:
             "steer": args.steer,
             "invert": env.get("PICARX_DRIVE_INVERT", None),
         },
+        "applied": {},
+        "artifacts": {},
+        "error": None,
     }
 
     # 1) Pre snapshot
     pre = _run([AIAGENT, "snapshot", "--json"], env=env)
     result["pre_snapshot"] = pre
     if not pre.get("ok"):
-        result["ok"] = False
-        return result
+        return _fail(result, "pre_snapshot_failed", pre)
 
     # 2) Optional steer
     if args.steer is not None:
         steer = _run([AIAGENT, "steer", "--angle", str(args.steer), "--json"], env=env)
         result["steer"] = steer
         if not steer.get("ok"):
-            result["ok"] = False
-            return result
+            return _fail(result, "steer_failed", steer)
 
     # 3) Drive
     drive = _run([
@@ -127,8 +136,7 @@ def do_turn(args) -> Dict[str, Any]:
     ], env=env)
     result["drive"] = drive
     if not drive.get("ok"):
-        result["ok"] = False
-        return result
+        return _fail(result, "drive_failed", drive)
 
     if args.pause_after > 0:
         time.sleep(args.pause_after)
@@ -137,8 +145,7 @@ def do_turn(args) -> Dict[str, Any]:
     post = _run([AIAGENT, "snapshot", "--json"], env=env)
     result["post_snapshot"] = post
     if not post.get("ok"):
-        result["ok"] = False
-        return result
+        return _fail(result, "post_snapshot_failed", post)
 
     # 5) Optional image diff (stuck detection)
     pre_path = pre.get("path")
@@ -149,8 +156,20 @@ def do_turn(args) -> Dict[str, Any]:
         if diff_ratio is not None:
             result["moved"] = diff_ratio >= args.min_diff
             if args.stop_on_stuck and not result["moved"]:
-                result["ok"] = False
-                result["error"] = "stuck_detected"
+                return _fail(result, "stuck_detected")
+
+    result["applied"] = {
+        "seconds": float(seconds),
+        "drive": {
+            "requested_direction": args.direction,
+            "applied_direction": drive.get("applied_direction", drive.get("direction")),
+            "applied_speed": drive.get("applied_speed", args.speed),
+        },
+    }
+    result["artifacts"] = {
+        "pre_snapshot": pre.get("path"),
+        "post_snapshot": post.get("path"),
+    }
 
     return result
 

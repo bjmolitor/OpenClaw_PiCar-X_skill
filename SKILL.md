@@ -198,6 +198,12 @@ Audio default:
 - Skill audio checks default speaker output to **100% PCM** (configurable via `NAVIS_SPK_VOLUME`, default `100`)
   to keep wake/beep cues clearly audible.
 
+## Legacy notice (short-term memory sync tooling)
+
+- Frühere Workspace-Skripte für WhatsApp short-term sync (`scripts/whatsapp_shortterm_sync.py`, `scripts/shortterm_append.py`) gelten als **deprecated legacy**.
+- Sie sind nicht Teil der kanonischen Skill-Architektur für den PiCar-X Body-Skill.
+- Zielarchitektur: Session-Kontext über OpenClaw-Session/Hook-Mechanik, nicht über separate Polling-Sync-Services.
+
 ## 4.1 Battery warnings (programmatic, no model)
 
 This repo includes `battery_watch.py`, a pure programmatic watcher:
