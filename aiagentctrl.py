@@ -730,14 +730,14 @@ def main(argv=None) -> int:
     try:
         _PX_OBJ = _make_px()
     except TimeoutError as e:
-        result = {'ok': False, 'action': args.command, 'error': f'init timeout: {e}'}
+        result = {'ok': False, 'action': args.command, 'cmd': args.command, 'error': {'code': 'init_timeout', 'detail': str(e)}}
         if json_out:
             print(json.dumps(result, separators=(',', ':'), ensure_ascii=False))
         else:
             print(result)
         return 1
     except Exception as e:
-        result = {'ok': False, 'action': args.command, 'error': f'init failed: {e}'}
+        result = {'ok': False, 'action': args.command, 'cmd': args.command, 'error': {'code': 'init_failed', 'detail': str(e)}}
         if json_out:
             print(json.dumps(result, separators=(',', ':'), ensure_ascii=False))
         else:
@@ -787,14 +787,25 @@ def main(argv=None) -> int:
 
         result.setdefault('max_speed', max_speed)
         result.setdefault('max_angle', max_angle)
+        result.setdefault('cmd', result.get('action', args.command))
+        result.setdefault('requested', {})
+        result.setdefault('applied', {})
+        result.setdefault('artifacts', {})
+        if isinstance(result.get('error'), str):
+            result['error'] = {'code': 'command_failed', 'detail': result['error']}
 
     except SystemExit:
         raise
     except Exception as e:
-        result = {'ok': False, 'error': str(e), 'action': args.command}
+        result = {'ok': False, 'action': args.command, 'cmd': args.command, 'error': {'code': 'command_failed', 'detail': str(e)}}
     finally:
         # Dead-man stop after each command
         _safe_stop(_PX_OBJ)
+
+    result.setdefault('cmd', result.get('action', args.command))
+    result.setdefault('requested', {})
+    result.setdefault('applied', {})
+    result.setdefault('artifacts', {})
 
     if json_out:
         print(json.dumps(result, separators=(',', ':'), ensure_ascii=False))
