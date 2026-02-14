@@ -13,7 +13,11 @@ All commands should return:
 {
   "ok": true,
   "cmd": "snapshot",
-  "ts": "2026-02-04T15:00:00+01:00"
+  "ts": "2026-02-04T15:00:00+01:00",
+  "requested": {},
+  "applied": {},
+  "artifacts": {},
+  "error": null
 }
 ```
 
@@ -24,7 +28,13 @@ On error:
   "ok": false,
   "cmd": "drive",
   "ts": "...",
-  "error": "human readable error"
+  "requested": {},
+  "applied": {},
+  "artifacts": {},
+  "error": {
+    "code": "command_failed",
+    "detail": "human readable error"
+  }
 }
 ```
 
@@ -89,6 +99,36 @@ On error:
 {
   "ok": true,
   "cmd": "stop"
+}
+```
+
+## agentic_turn (wrapper)
+
+```json
+{
+  "ok": true,
+  "cmd": "agentic_turn",
+  "requested": {
+    "speed": 30,
+    "seconds": 1.48,
+    "distance_cm": 40,
+    "direction": "forward",
+    "steer": null,
+    "invert": "1"
+  },
+  "applied": {
+    "seconds": 1.48,
+    "drive": {
+      "requested_direction": "forward",
+      "applied_direction": "backward",
+      "applied_speed": 30
+    }
+  },
+  "artifacts": {
+    "pre_snapshot": ".../snap-a.jpg",
+    "post_snapshot": ".../snap-b.jpg"
+  },
+  "error": null
 }
 ```
 

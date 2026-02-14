@@ -159,11 +159,29 @@ Every subcommand returns JSON with at least:
 
 ## 3) OpenClaw integration spec
 
-### 3.1 Skill wrapper (recommended)
-Provide an OpenClaw Skill wrapper that:
-- exposes tools in a single namespace (e.g. `picarx.snapshot`, `picarx.ultrasonic`, …)
-- enforces GO gate (blocks motion commands without GO)
-- converts outputs to consistent JSON schema (above)
+### 3.1 Skill wrapper (target namespace)
+Provide an OpenClaw Skill wrapper with this concrete namespace:
+- `picarx.snapshot`
+- `picarx.ultrasonic`
+- `picarx.steer`
+- `picarx.head`
+- `picarx.drive`
+- `picarx.stop`
+- `picarx.turn` (maps to `agentic_drive.py`, one full turn)
+
+Wrapper requirements:
+- enforces policy gate(s) as configured for the environment
+- forwards to deterministic CLIs (`aiagentctrl.py` / `agentic_drive.py`)
+- normalizes outputs to the common JSON envelope (`ok`, `cmd`, `requested`, `applied`, `artifacts`, `error`)
+
+Suggested command mapping:
+- `picarx.snapshot` -> `./aiagentctrl.py snapshot --json`
+- `picarx.ultrasonic` -> `./aiagentctrl.py ultrasonic --json`
+- `picarx.steer` -> `./aiagentctrl.py steer --angle <n> --json`
+- `picarx.head` -> `./aiagentctrl.py head [--pan n] [--tilt n] --json`
+- `picarx.drive` -> `./aiagentctrl.py drive --speed n --seconds s --direction <forward|backward> --json`
+- `picarx.stop` -> `./aiagentctrl.py stop --json`
+- `picarx.turn` -> `./agentic_drive.py --distance-cm n --speed n --direction <...> [--steer n] [--loops n]`
 
 ### 3.2 Conversation + cross-channel context (adjacent system)
 Not implemented inside this repo, but required for the robot body experience:
