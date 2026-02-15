@@ -146,7 +146,7 @@ Regeln (v0):
 - parameter-sensitives Profiling (speed 30/40/50)
 - Objektzentrierte Lenkentscheidung strukturieren (JSON decision schema)
 
-### Draft: Decision-Schema (für LMM-Ausgabe, v0)
+### Archiv (nicht aktiv): älterer Draft zur Historie
 ```json
 {
   "decision": "forward|left|right|stop|arrived",
@@ -157,3 +157,5 @@ Regeln (v0):
   "needs_human": false
 }
 ```
+
+Hinweis: Für aktuelle Stand-Vorbereitung und spätere HITL-Tests gilt ausschließlich das oben definierte `Decision JSON Schema (v0)` mit `action`/`steer`/`distance_cm`/`reason`.
