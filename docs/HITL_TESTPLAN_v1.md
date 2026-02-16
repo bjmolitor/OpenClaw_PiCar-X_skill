@@ -5,6 +5,9 @@ Stand: 2026-02-14
 ## Ziel
 Geplante, kurze Human-in-the-Loop Testsessions zur Verifikation der vorbereiteten autonomen Fahrlogik.
 
+Kanonische Referenz (bindend):
+- `docs/SPEC_DRIVE_LOOP_v1.md`
+
 Prinzip:
 - Vorher im Stand vorbereiten.
 - In Session nur feine Parameteranpassung.
@@ -140,6 +143,13 @@ Regeln (v0):
 - `steer`: optional, int [-35..35]
 - `distance_cm`: optional, number [0..80]
 - `reason`: optional, string
+
+## Schnelle Parameter-Justagepunkte (HITL)
+- `--distance-cm`: 20 (eng) / 30 (default) / 40 (offene Strecke)
+- `--speed`: 30 (stabil) / 40 (nur bei freier Strecke)
+- `steer` im Decision-JSON: Start bei 0, dann in ±5er Schritten korrigieren (max ±25 im Testbetrieb)
+- `--loops`: im HITL immer `1` lassen (ein Turn pro Entscheidung)
+- `--stop-on-stuck`: immer aktiv lassen (Safety default)
 
 ## Nächste Iteration (v2)
 - Recovery-Schritte automatisieren

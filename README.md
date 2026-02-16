@@ -54,6 +54,13 @@ python3 picarx_tool_router.py picarx.drive --speed 30 --seconds 1.0 --direction 
 python3 picarx_tool_router.py picarx.turn --distance-cm 40 --speed 30 --direction forward --invert 1
 ```
 
+### Canonical driving-loop specification
+
+The canonical source of truth for autonomous step driving is:
+- `docs/SPEC_DRIVE_LOOP_v1.md`
+
+All HITL plans and runtime turn behavior should align with this spec.
+
 ### Agentic driving (turn wrapper)
 
 For agentic navigation, use the turn wrapper `agentic_drive.py`:
