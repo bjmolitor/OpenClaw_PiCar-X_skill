@@ -1,3 +1,16 @@
+---
+name: picar-x-openclaw-skill
+description: Integrate and operate a SunFounder PiCar-X robot body in OpenClaw with deterministic CLI tools (snapshot, ultrasonic, steer, drive, stop) and turn-based agentic driving (`picarx.turn`) for camera-guided autonomous step navigation.
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "🤖",
+        "requires": { "bins": ["python3", "aplay", "arecord"] },
+      },
+  }
+---
+
 # OpenClaw Skill Spec (MVP v0.1)
 
 This file defines the **Skill contract** for integrating SunFounder **PiCar‑X v2** as a robot body in OpenClaw.
