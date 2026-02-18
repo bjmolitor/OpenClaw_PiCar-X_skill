@@ -1,0 +1,16 @@
+[Unit]
+Description=Navis 01 - Wake-word + VAD listen daemon (no motion)
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/admin/.openclaw/workspace
+EnvironmentFile=%h/.config/navis01/navis_listen.env
+ExecStart=/usr/bin/python3 /home/admin/picar-x/OpenClaw_PiCar-X_skill/scripts/navis_listen_daemon.py
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
