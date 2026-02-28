@@ -25,3 +25,16 @@ Kompakte, einheitliche Rückfrage an den Menschen vor risikorelevanten Fahr-Schr
 ## Aktueller Standard (gesetzt)
 - **Standard: B** (größere Einzelschritte mit weniger Snapshots), wie von Papa entschieden.
 - Bei Unsicherheit/enger Umgebung darf temporär auf A zurückgefallen werden.
+
+## Mini-Trigger für automatischen Fallback auf A
+- Nach einem Schritt ist das Zielobjekt im Folgebild **nicht mehr sichtbar**.
+- Unerwartetes Hindernis erscheint im zentralen Sichtfeld.
+- Modellklassifikation endet auf `uncertain` oder `blocked`.
+
+Dann im nächsten Turn: Distanz reduzieren + Snapshot-Frequenz erhöhen (A-Verhalten), bis wieder `continue` mit stabiler Sicht erreicht ist.
+
+## WhatsApp-Kurzformat (einsatzbereit)
+Kontext: <1 Satz>. A: <konservativ>. B: <fortsetzen>. Frage: A oder B?
+
+## No-Response Regel (Sicherheitsdefault)
+Wenn innerhalb des Testfensters keine Antwort kommt: **kein Fahrkommando ausführen** (hold position) und nur neuen Snapshot + erneute 1‑Frage-Rückfrage senden.

@@ -1,0 +1,19 @@
+{
+  "profile": "target-marker-v1",
+  "distance_cm": 30,
+  "speed": 30,
+  "steer": 0,
+  "loops": 1,
+  "direction": "forward",
+  "invert": 1,
+  "stop_on_stuck": true,
+  "camera_gate_freshness_s": 10,
+  "max_turns": 8,
+  "hard_stop_on": [
+    "blocked",
+    "critical_uncertain",
+    "stuck_twice",
+    "unexpected_drift",
+    "human_stop"
+  ]
+}

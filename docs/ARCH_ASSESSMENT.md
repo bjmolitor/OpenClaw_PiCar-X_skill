@@ -93,3 +93,11 @@ Fokus: agentisches Fahren via Kamera‑Loop (Snapshot → Decision → Drive/Ste
 - Ultrasonic fix: negative Werte als `ok=false`, retries, GPIO contention.
 - Turn‑Logging als JSONL.
 
+## Ergänzung 2026-02-23: Repo-Integritäts-Guardrail
+- Beobachtung im Skill-Repo: lose Git-Objekte sind beschädigt (`.git/objects/... ist leer`, `git status` bricht mit Exit 128 ab).
+- Kleiner, sofort wirksamer Guardrail vor jeder Sessionarbeit im Skill-Repo:
+  1) `git fsck --full` ausführen.
+  2) Bei Fehlern **keine riskanten Git-Operationen** (kein Rebase/GC).
+  3) Änderungen als Patch/Dateikopie sichern, dann Recovery planen (fresh clone + transplant der Arbeitsstände).
+- Ziel: Fortschritt bei Refactoring/Qualität sichern, ohne den aktuellen Arbeitsstand zu verlieren.
+
