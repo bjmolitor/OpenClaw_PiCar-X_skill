@@ -38,7 +38,11 @@ import numpy as np
 import webrtcvad
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-MEDIA = os.path.join(BASE, "navis_media.py")
+MEDIA = os.environ.get("NAVIS_MEDIA_PY", os.path.join(BASE, "navis_media.py"))
+if not os.path.isfile(MEDIA):
+    fallback_media = "/home/admin/.openclaw/workspace/navis_media.py"
+    if os.path.isfile(fallback_media):
+        MEDIA = fallback_media
 
 # Cross-channel short-term memory log (last hour)
 SHORTTERM_LOG = os.path.join(BASE, "logs", "conversation_shortterm.jsonl")
