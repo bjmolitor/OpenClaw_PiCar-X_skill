@@ -524,6 +524,15 @@ def _do_snapshot(px: Any, out_path: Optional[str] = None, vflip: bool = False, h
                                 'backend_exe': os.path.basename(exe),
                                 'path': out_path,
                                 'cmd': cmd,
+                                'artifacts': {
+                                    'images': [out_path],
+                                    'primary_image': out_path,
+                                },
+                                'session_context': {
+                                    'kind': 'camera_snapshot',
+                                    'image_path': out_path,
+                                    'note': 'Inject this image into the active OpenClaw session for model vision context.',
+                                },
                             }
                             if last_out and verbose > 0:
                                 ok_res['log'] = last_out
@@ -592,7 +601,22 @@ def _do_snapshot(px: Any, out_path: Optional[str] = None, vflip: bool = False, h
             _with_timeout(lambda: Vilib.camera_close(), 0.3)
         except Exception:
             pass
-        return {'ok': True, 'action': 'snapshot', 'backend': 'vilib', 'path': os.path.join(out_dir, out_name + '.jpg')}
+        snap_path = os.path.join(out_dir, out_name + '.jpg')
+        return {
+            'ok': True,
+            'action': 'snapshot',
+            'backend': 'vilib',
+            'path': snap_path,
+            'artifacts': {
+                'images': [snap_path],
+                'primary_image': snap_path,
+            },
+            'session_context': {
+                'kind': 'camera_snapshot',
+                'image_path': snap_path,
+                'note': 'Inject this image into the active OpenClaw session for model vision context.',
+            },
+        }
     except TimeoutError as e:
         try:
             Vilib.camera_close()
@@ -726,7 +750,7 @@ def _maybe_inject_snapshot_context(result: Dict[str, Any]) -> None:
         ]
         p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=45)
         out = (p.stdout or "").strip()
-        result["injection"] = {
+        inj = {
             "ok": p.returncode == 0,
             "channel": channel,
             "target": target,
@@ -735,6 +759,9 @@ def _maybe_inject_snapshot_context(result: Dict[str, Any]) -> None:
             "rc": p.returncode,
             "out": out[:2000],
         }
+        if p.returncode != 0 and "pairing required" in out.lower():
+            inj["hint"] = "Local CLI is not paired for outbound messaging. Inject via active OpenClaw runtime/tooling instead."
+        result["injection"] = inj
     except Exception as e:
         result["injection"] = {"ok": False, "error": str(e)}
 
