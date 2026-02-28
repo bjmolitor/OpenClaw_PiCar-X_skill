@@ -11,12 +11,14 @@ Namespace mapping:
 - picarx.drive
 - picarx.stop
 - picarx.turn
+- picarx.sweep
 """
 
 import argparse
 import json
 import os
 import subprocess
+import time
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -88,6 +90,13 @@ def main() -> int:
     p_turn.add_argument("--invert", type=int, choices=[0, 1], default=1)
     p_turn.add_argument("--stop-on-stuck", action="store_true")
 
+    p_sweep = sub.add_parser("picarx.sweep")
+    p_sweep.add_argument("--tilt", type=int, default=0)
+    p_sweep.add_argument("--pause-ms", type=int, default=800)
+    p_sweep.add_argument("--right-pan", type=int, default=35)
+    p_sweep.add_argument("--left-pan", type=int, default=-35)
+    p_sweep.add_argument("--center-pan", type=int, default=0)
+
     args = ap.parse_args()
 
     if args.tool == "picarx.snapshot":
@@ -136,6 +145,61 @@ def main() -> int:
         if args.stop_on_stuck:
             cmd += ["--stop-on-stuck"]
         res = _run(cmd)
+    elif args.tool == "picarx.sweep":
+        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        positions = [
+            ("right", int(args.right_pan)),
+            ("left", int(args.left_pan)),
+            ("center", int(args.center_pan)),
+        ]
+        pause_s = max(0.0, float(args.pause_ms) / 1000.0)
+        steps: List[Dict[str, Any]] = []
+        images: List[str] = []
+        ok = True
+        detail_error = None
+        for label, pan in positions:
+            head_res = _run([AIAGENT, "head", "--pan", str(pan), "--tilt", str(int(args.tilt)), "--json"])
+            steps.append({"step": f"head-{label}", "result": head_res})
+            if not head_res.get("ok"):
+                ok = False
+                detail_error = {"code": "head_failed", "detail": label}
+                break
+            if pause_s > 0:
+                time.sleep(pause_s)
+            img_path = os.path.join("camera", f"sweep-{label}-{ts}.jpg")
+            snap_res = _run([AIAGENT, "snapshot", "--path", img_path, "--json"])
+            steps.append({"step": f"snapshot-{label}", "result": snap_res})
+            if not snap_res.get("ok"):
+                ok = False
+                detail_error = {"code": "snapshot_failed", "detail": label}
+                break
+            p = snap_res.get("path")
+            if p:
+                images.append(p)
+
+        _run([AIAGENT, "head", "--pan", str(int(args.center_pan)), "--tilt", str(int(args.tilt)), "--json"])
+
+        res = {
+            "ok": ok,
+            "cmd": "picarx.sweep",
+            "ts": datetime.utcnow().isoformat() + "Z",
+            "requested": {
+                "tilt": int(args.tilt),
+                "pause_ms": int(args.pause_ms),
+                "right_pan": int(args.right_pan),
+                "left_pan": int(args.left_pan),
+                "center_pan": int(args.center_pan),
+            },
+            "applied": {
+                "sequence": ["right", "left", "center"],
+            },
+            "artifacts": {
+                "images": images,
+                "primary_image": images[0] if images else None,
+            },
+            "steps": steps,
+            "error": detail_error,
+        }
     else:
         res = {
             "ok": False,
