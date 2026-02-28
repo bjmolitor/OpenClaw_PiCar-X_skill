@@ -674,6 +674,71 @@ def _make_px():
         return _with_timeout(_construct2, init_timeout)
 
 
+def _maybe_inject_snapshot_context(result: Dict[str, Any]) -> None:
+    """Best-effort: inject snapshot image into current OpenClaw chat/session.
+
+    Controlled by env:
+    - PICARX_INJECT_SNAPSHOTS (default: 0 => disabled)
+    - PICARX_INJECT_CHANNEL (e.g. whatsapp)
+    - PICARX_INJECT_TARGET  (chat/user id)
+    - PICARX_INJECT_MESSAGE (caption, optional)
+    - PICARX_OPENCLAW_BIN   (default: openclaw)
+
+    This should never turn a successful snapshot into a failed command.
+    """
+    try:
+        if not isinstance(result, dict):
+            return
+        if not result.get("ok") or result.get("action") != "snapshot":
+            return
+
+        enabled = str(os.environ.get("PICARX_INJECT_SNAPSHOTS", "0")).strip().lower() in ("1", "true", "yes", "on")
+        if not enabled:
+            return
+
+        path = str(result.get("path") or "").strip()
+        if not path or not os.path.exists(path):
+            result["injection"] = {"ok": False, "error": "missing_snapshot_path"}
+            return
+
+        channel = str(os.environ.get("PICARX_INJECT_CHANNEL", "")).strip()
+        target = str(os.environ.get("PICARX_INJECT_TARGET", "")).strip()
+        if not channel or not target:
+            result["injection"] = {"ok": False, "error": "missing_target", "note": "Set PICARX_INJECT_CHANNEL and PICARX_INJECT_TARGET"}
+            return
+
+        message = str(os.environ.get("PICARX_INJECT_MESSAGE", "Camera snapshot (session context)."))
+        openclaw_bin = str(os.environ.get("PICARX_OPENCLAW_BIN", "openclaw")).strip() or "openclaw"
+
+        cmd = [
+            openclaw_bin,
+            "message",
+            "send",
+            "--channel",
+            channel,
+            "--target",
+            target,
+            "--message",
+            message,
+            "--media",
+            path,
+            "--json",
+        ]
+        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=45)
+        out = (p.stdout or "").strip()
+        result["injection"] = {
+            "ok": p.returncode == 0,
+            "channel": channel,
+            "target": target,
+            "path": path,
+            "cmd": cmd,
+            "rc": p.returncode,
+            "out": out[:2000],
+        }
+    except Exception as e:
+        result["injection"] = {"ok": False, "error": str(e)}
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Agent-friendly PiCar-X controller')
     parser.add_argument('--json', action='store_true', help='Print JSON output (single object)')
@@ -784,6 +849,9 @@ def main(argv=None) -> int:
 
         else:
             raise ValueError(f"Unknown command: {args.command}")
+
+        # Optional session-context injection for camera snapshots.
+        _maybe_inject_snapshot_context(result)
 
         result.setdefault('max_speed', max_speed)
         result.setdefault('max_angle', max_angle)
